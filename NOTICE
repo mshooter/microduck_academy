@@ -1,0 +1,24 @@
+microduck_academy
+Copyright 2026 Moira Shooter
+
+Licensed under the Apache License, Version 2.0. See LICENSE.
+
+This repository vendors files from Pollen Robotics, also under the
+Apache License 2.0, copied unmodified:
+
+1. assets/microduck/  (scene_ball.xml, robot_allcollisions.xml, ball.xml,
+   and the 38 mesh files under assets/microduck/assets/)
+   Source: https://github.com/pollen-robotics/microduck_rl
+   Path:   src/mjlab_microduck/robot/microduck/
+   Commit: bfc0ed49082ae1ab08385ab3d8a80e6e2290428b (2026-08-19)
+
+2. assets/policies/  (nine ONNX policy files)
+   Source: https://github.com/pollen-robotics/microduck
+   Path:   policies/
+   Commit: 590b986bd8c0d50ae02cb3ea2f59c463b6828168 (tag daemon-v0.10.0)
+   Pollen's policies/README.md records that these were in turn copied
+   from https://github.com/apirrone/microduck_runtime at commit 5f3b314
+   (roulade.onnx at 7e4ab6d).
+
+Copyright for the vendored files remains with Pollen Robotics and the
+original authors.
