@@ -15,8 +15,8 @@ Stage 1 is this standalone MuJoCo demo; stage 2 is Gazebo; stage 3 is Academy in
 
 * [x] Vendored robot model and the nine policies, with `NOTICE`
 * [x] Tests and CI (Ubuntu and macOS)
-* [ ] Headless smoke test: stand, walk, save one head-camera frame
-* [ ] `docs/api.md`: the message contract
+* [x] Headless smoke test: stand, walk, save one head-camera frame
+* [x] `docs/api.md`: the message contract
 * [ ] `duckd_sim.py`: the server (Unix socket, one JSON-RPC object per line)
 * [ ] Install check on a second machine
 
