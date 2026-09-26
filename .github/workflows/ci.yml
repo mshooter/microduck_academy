@@ -3,17 +3,17 @@ name: CI
 on:
   push:
     branches: [main]
-  pull_request: 
-  
-jobs: 
+  pull_request:
+
+jobs:
   test:
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }} 
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v7 
-      - uses: astral-sh/setup-uv@v10 
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.2.0
       - run: uv sync --locked
-      - run: uv run pytest -q 
+      - run: uv run pytest -q
