@@ -22,3 +22,8 @@ Apache License 2.0, copied unmodified:
 
 Copyright for the vendored files remains with Pollen Robotics and the
 original authors.
+
+3. src/microduck_academy/vendor/infer_policy.py
+   Source: https://github.com/pollen-robotics/microduck_rl
+   Path:   scripts/infer_policy.py
+   Commit: bfc0ed49082ae1ab08385ab3d8a80e6e2290428b (2026-08-19)
