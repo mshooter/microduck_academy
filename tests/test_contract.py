@@ -106,6 +106,31 @@ def test_sim_frame_is_a_640x360_jpeg_when_gl_is_available(duck):
     assert base64.b64decode(reply["data"])[:2] == b"\xff\xd8", "JPEG magic bytes"
 
 
+def test_sim_frame_does_not_hold_the_sim_lock_while_rendering(duck, server, monkeypatch):
+    """A slow render must not stall the 50 Hz loop: the lock is held only to copy the state."""
+    import threading
+    import numpy as np
+    from microduck_academy import smoke
+
+    lock_free_during_render = []
+
+    def fake_render(model, data, *args, **kwargs):
+        def probe():                                      # another thread, like the control loop
+            got = server.sim.lock.acquire(timeout=0.5)
+            lock_free_during_render.append(got)
+            if got:
+                server.sim.lock.release()
+        t = threading.Thread(target=probe)
+        t.start()
+        t.join()
+        return np.zeros((smoke.FRAME_H, smoke.FRAME_W, 3), dtype=np.uint8)
+
+    monkeypatch.setattr(smoke, "render_frame", fake_render)
+    reply = duck.call("sim.frame")
+    assert (reply["width"], reply["height"]) == (640, 360)
+    assert lock_free_during_render == [True], "the control loop could not take the lock during a render"
+
+
 def test_example_client_script_runs_against_the_server(server):
     out = subprocess.run(
         [sys.executable, "examples/client.py", "--socket", server.path, "--seconds", "0.5", "--vx", "0.3"],
