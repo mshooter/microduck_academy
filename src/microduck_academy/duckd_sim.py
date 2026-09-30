@@ -29,6 +29,7 @@ Threads, and the one lock they share:
     DuckSim (handler)  ─── everything below holds self.lock ───
       handle()  METHODS table -> pokes PolicyInference (set_vel_cmd, head_offset, trigger_*)
       state()   trunk pose, joints, gravity, deadman -> one robot.state frame
+      frame     copies MjData under the lock, then renders the copy outside it
       tick()    control thread, 50 Hz real time:
                   1. deadman.check(t): zero the velocity if the last move is older than MOVE_EXPIRY
                   2. smoke.control_tick(policy): observation -> ONNX -> data.ctrl
@@ -135,6 +136,8 @@ class DuckSim:
                                               int(self.model.actuator_trnid[i, 0])) for i in range(self.model.nu)]
         self.head_slots = [self.joint_names.index(name) for name in HEAD_FIELDS]
         self.deadman = Deadman()
+        self._frame_data = mujoco.MjData(self.model)
+        self._frame_lock = threading.Lock()
         self.loop_hz = 0.0
         self.missed = 0
         self.reset()
@@ -235,10 +238,15 @@ class DuckSim:
             }
 
     def frame_jpeg(self) -> bytes:
+        """Render the head camera from a snapshot. The sim lock is held only to copy the state
+        (microseconds), not while rendering and encoding, so a slow frame never stalls the 50 Hz
+        loop. `_frame_lock` keeps two clients from rendering into the same snapshot at once."""
         from PIL import Image
-        with self.lock:
+        with self._frame_lock:
+            with self.lock:
+                mujoco.mj_copyData(self._frame_data, self.model, self.data)
             try:
-                rgb = smoke.render_frame(self.model, self.data)
+                rgb = smoke.render_frame(self.model, self._frame_data)
             except Exception as e:  # no OpenGL context (CI, a bare server)
                 raise RpcError(INTERNAL_ERROR, f"cannot render: {type(e).__name__}: {e}") from None
         buf = io.BytesIO()
