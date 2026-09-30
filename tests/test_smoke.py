@@ -25,6 +25,22 @@ def test_duck_stays_upright(walked):
     assert walked["upright"]
 
 
+def test_render_fails_fast_after_the_first_gl_failure(monkeypatch):
+    """Retrying GL after GLFW failed to initialise hangs on headless Linux; the second call must not retry."""
+    calls = []
+
+    def broken_renderer(*args, **kwargs):
+        calls.append(1)
+        raise RuntimeError("no display")
+
+    monkeypatch.setattr(smoke, "_gl_error", None)
+    monkeypatch.setattr(smoke.mujoco, "Renderer", broken_renderer)
+    for _ in range(2):
+        with pytest.raises(RuntimeError):
+            smoke.render_frame(model=None, data=None)
+    assert len(calls) == 1, "the renderer must be tried once, then the first error reused"
+
+
 def test_head_camera_renders_forward_and_upright():
     with contextlib.redirect_stdout(io.StringIO()):
         model = smoke.load_model()

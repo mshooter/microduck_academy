@@ -113,9 +113,19 @@ def trunk_pose(policy):
     return x, y, z, yaw
 
 
+_gl_error: Exception | None = None
+
+
 def render_frame(model, data, width: int = FRAME_W, height: int = FRAME_H) -> np.ndarray:
     """RGB image from the head camera, no window needed. Needs an OpenGL context (EGL/GLX/CGL)."""
-    renderer = mujoco.Renderer(model, height=height, width=width)
+    global _gl_error
+    if _gl_error is not None:
+        raise RuntimeError(f"no OpenGL context (first failure: {_gl_error})")
+    try:
+        renderer = mujoco.Renderer(model, height=height, width=width)
+    except Exception as e:
+        _gl_error = e
+        raise
     try:
         renderer.update_scene(data, camera=CAMERA)
         return renderer.render().copy()

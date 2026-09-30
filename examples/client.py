@@ -57,8 +57,7 @@ class DuckClient:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self.lock:
-                if msg_id in self.replies:
-                    reply = self.replies.pop(msg_id)
+                if (reply := self.replies.pop(msg_id, None)) is not None:
                     if "error" in reply:
                         raise RuntimeError(f"{method}: {reply['error']}")
                     return reply.get("result")
@@ -79,6 +78,14 @@ class DuckClient:
     def state(self) -> dict | None:
         with self.lock:
             return self.last_state
+
+    def close(self) -> None:
+        """Close the socket; the server then stops streaming to us."""
+        try:
+            self.sock.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+        self.sock.close()
 
 
 def main() -> None:
