@@ -113,6 +113,9 @@ def trunk_pose(policy):
     return x, y, z, yaw
 
 
+_gl_error: Exception | None = None
+
+
 def render_frame(model, data, width: int = FRAME_W, height: int = FRAME_H) -> np.ndarray:
     """RGB image from the head camera, no window needed. Needs an OpenGL context (EGL/GLX/CGL)."""
     global _gl_error
