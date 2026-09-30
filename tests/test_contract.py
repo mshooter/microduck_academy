@@ -133,11 +133,21 @@ def test_walking_moves_the_duck_forward(duck):
     assert state["safety"]["fallen"] is False
 
 
+def wait_sim_seconds(duck, seconds, wall_limit=10.0):
+    """Wait until the server's own clock has advanced `seconds`. The deadman and the policy run on
+    sim time, which falls behind wall time on a slow CI runner, so sleeping wall time is flaky."""
+    t0 = wait_for_state(duck)["t"]
+    deadline = time.monotonic() + wall_limit
+    while duck.state()["t"] - t0 < seconds:
+        assert time.monotonic() < deadline, f"only {duck.state()['t'] - t0:.2f} s simulated in {wall_limit} s"
+        time.sleep(0.02)
+    return duck.state()
+
+
 def test_move_expires_without_resend(duck):
     duck.call("robot.subscribe", {"hz": 20})
     duck.notify("robot.move", {"vx": 0.3})
-    time.sleep(duckd_sim.MOVE_EXPIRY + 0.3)
-    state = duck.state()
+    state = wait_sim_seconds(duck, duckd_sim.MOVE_EXPIRY + 0.3)
     assert state["move"]["applied"] == [0.0, 0.0, 0.0]
     assert state["move"]["limited_by"] == ["expired"]
 
@@ -150,9 +160,10 @@ def camera_look_z(sim) -> float:
 
 
 def test_look_at_the_floor_turns_the_camera_down(duck, server):
-    time.sleep(1.0)                                       # settle standing
+    duck.call("robot.subscribe", {"hz": 20})
+    wait_sim_seconds(duck, 1.0)                           # settle standing
     z_level = camera_look_z(server.sim)
     duck.call("robot.look", {"x": 0.3, "y": 0.0, "z": -0.12})
-    time.sleep(1.5)
+    wait_sim_seconds(duck, 1.5)
     z_down = camera_look_z(server.sim)
     assert z_down < z_level - 0.1, f"look z went {z_level:.2f} -> {z_down:.2f}, expected more negative"
