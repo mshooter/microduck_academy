@@ -239,7 +239,9 @@ Turn the connection into a stream of `robot.state` notifications. Discrete.
 The reply names the policy files loaded for the life of the process
 (`walk`, `stand`, and the skills as `sitstand`, `ground_pick`,
 `kick_left`, ...); a missing key means that skill is not available. File
-names shown are illustrative.
+names shown are illustrative. One stream per connection: subscribing again
+on the same connection changes its rate rather than starting a second
+stream.
 
 ### robot.state
 
@@ -352,20 +354,32 @@ doing nothing: `robot.enable`, `robot.init`, `robot.relax`, `robot.pose`,
 height and lean) and `robot.mouth` are the ones most likely to be wanted
 for a fetch exercise later.
 
-## 5. Not confirmed yet
+## 5. Not confirmed yet, and where the simulator differs
 
-Settled when the server exists, or when the real daemon's source is read.
+Settled when the real daemon's source is read or the real robot is measured.
 
-- How long the server keeps a `robot.move` before it expires. Resend at 20
-  Hz and you are safe on both the simulator and the real robot.
+- The simulator zeroes a `robot.move` 0.5 s after the last one. The real
+  robot's timeout is not known. Resend at 20 Hz and you are safe on both.
 - Whether the real robot requires `hello` before other calls. The
   simulator accepts it and does not require it.
-- The order of the four numbers in `state.head`. Taken as `neck_pitch,
-  head_pitch, head_yaw, head_roll` until checked.
-- What `state.policy` says while a skill runs.
+- `state.head` is `neck_pitch, head_pitch, head_yaw, head_roll`, the
+  simulator's actuator order. Not checked against the real robot.
+- `state.policy` on the simulator is `walk`, `stand`, `sit`, or the skill
+  name (`ground_pick`, `kick_left`, `kick_right`, `roulade`) while one runs.
+  The real robot's strings while a skill runs are not known.
+- `state.joints` and `state.targets` have 14 entries on the simulator: the
+  model has no mouth servo. The real robot has 15, `mouth` at index 9.
+- `robot.head` values are offsets from the policy's default head pose on
+  the simulator, because that is what the shipped policies were trained on.
+  Measured 2026-09-26: positive `head_pitch` looks down, positive `head_yaw`
+  looks left, `neck_pitch` barely moves the gaze.
+- `robot.look` on the simulator is a geometric approximation with a fixed
+  gain, not the real daemon's gaze solver. It points the camera the right
+  way; do not expect exact aim.
 - Dead zones for `vy` (trained ±0.3) and `vyaw` (trained ±1.0); only `vx`
   has been measured.
 - The real camera's field of view; the simulator uses 45 degrees vertical.
+- `safety.gain` is not sent by the simulator (no servos to read it from).
 
 ## 6. Example client
 
@@ -374,8 +388,16 @@ client: standard library only, connects, says hello, subscribes, walks for
 a few seconds at 20 Hz, stops. It is deliberately wire-level, not
 Academy-shaped; `setV()`, `getImage()` and friends belong in `HAL.py`, one
 layer up. Read it as "what `hal_interfaces/motors.py` and `camera.py` do
-for ROS, done for this socket". It cannot run until the server exists;
-the server's first test will be running it.
+for ROS, done for this socket".
+
+```bash
+uv run python -m microduck_academy.duckd_sim       # terminal 1
+uv run python examples/client.py                    # terminal 2
+```
+
+`tests/test_contract.py` runs the client against the server and checks the
+shapes above, plus that the duck walks, that a move expires, and that
+`robot.look` turns the camera down.
 
 ## Appendix: where each name comes from
 
