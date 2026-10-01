@@ -81,14 +81,15 @@ failed to dlopen path '.../.venv/bin/python': ... Library not loaded: @executabl
 This is because `mjpython` needs the shared `libpython` library, and it cannot find it next to the venv's
 `python`. uv's managed Python does actually ship the shared library, but the venv doesn't link to it, so we need to do this by hand. 
 
-To do this, copy the shared library into the
-venv from the uv-managed Python install. From the repo root and with the venv activated, run:
+To do this, symlink the shared library into the
+venv from the uv-managed Python install. From the repo root, run:
 
 ```bash
-cp "$(uv run python -c 'import sys; print(sys.base_prefix)')"/lib/libpython3.*.dylib .venv/lib/
+ln -sf "$(uv run python -c 'import sys; print(sys.base_prefix)')"/lib/libpython3.*.dylib .venv/lib/
 ```
 
-You will need to run this after recreating `.venv` (e.g. if you delete `.venv` folder). See
+The link lives inside `.venv`, so you will need to run this again if you delete or recreate `.venv`
+(e.g. after changing the Python version). See
 [mujoco#1923](https://github.com/google-deepmind/mujoco/issues/1923) and
 [uv#8953](https://github.com/astral-sh/uv/issues/8953).
 
