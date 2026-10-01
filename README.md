@@ -37,7 +37,7 @@ uv fetches Python 3.12 if your machine lacks it.
 
 ```bash
 uv run python -m microduck_academy.duckd_sim            # terminal 1: headless, listens on /tmp/duckd.sock
-uv run python -m microduck_academy.duckd_sim --viewer   # same, with a MuJoCo window (macOS: mjpython)
+uv run python -m microduck_academy.duckd_sim --viewer   # same, with a MuJoCo window (on macOS: replace python with mjpython)
 uv run python examples/client.py                         # terminal 2: hello, subscribe, walk 5 s, stop
 ```
 
@@ -66,6 +66,31 @@ then `duckd_sim.py`. Each file starts with a docstring saying what it is for.
 | `tests/test_assets.py` | The vendored files are complete and have the shapes the code relies on |
 | `tests/test_smoke.py` | The policies walk in our loop and the camera renders |
 | `tests/test_contract.py` | The server and the example client agree with `docs/api.md`, over a real socket |
+
+## Troubleshooting
+
+### macOS: `mjpython` fails with `Library not loaded: @executable_path/../lib/libpython3.X.dylib`
+
+Running `uv run mjpython ...` fails with an error like:
+
+```
+failed to dlopen path '.../.venv/bin/python': ... Library not loaded: @executable_path/../lib/libpython3.12.dylib
+  Reason: tried: ... '.../.venv/bin/../lib/libpython3.12.dylib' (no such file), ...
+```
+
+This is because `mjpython` needs the shared `libpython` library, and it cannot find it next to the venv's
+`python`. uv's managed Python does actually ship the shared library, but the venv doesn't link to it, so we need to do this by hand. 
+
+To do this, copy the shared library into the
+venv from the uv-managed Python install. From the repo root and with the venv activated, run:
+
+```bash
+cp "$(uv run python -c 'import sys; print(sys.base_prefix)')"/lib/libpython3.*.dylib .venv/lib/
+```
+
+You will need to run this after recreating `.venv` (e.g. if you delete `.venv` folder). See
+[mujoco#1923](https://github.com/google-deepmind/mujoco/issues/1923) and
+[uv#8953](https://github.com/astral-sh/uv/issues/8953).
 
 ## Contributing
 
