@@ -3,6 +3,7 @@ Motors interface to handle robot.move commands.
 
 Follows Academy's MotorsNode with the caveat that this interface
 uses a background thread to prevent motor commands from expiring after 0.5s.
+The interface is handed an already connected client.
 """
 
 import threading
