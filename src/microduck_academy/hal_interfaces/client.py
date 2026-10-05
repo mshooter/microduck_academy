@@ -1,4 +1,9 @@
-"""Smallest complete client for the duck server. Standard library only."""
+"""Smallest complete client for the duck server. 
+
+The plumbing required to send and receive messages from the robot.
+In Academy terms, this is the rclpy
+
+"""
 import json
 import socket
 import threading
@@ -9,7 +14,7 @@ API_VERSION = 16  # duck-ipc-proto lib.rs line 164, commit 590b986
 DEFAULT_SOCKET = "/tmp/duckd.sock"
 
 class DuckClient:
-    def __init__(self, path: str):
+    def __init__(self, path: str = DEFAULT_SOCKET):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self.sock.connect(path)
