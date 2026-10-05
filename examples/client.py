@@ -1,4 +1,4 @@
-"""Smallest complete client for the duck server. Standard library only.
+"""Demo client for the duck server. Standard library only.
 
 Connects to the Unix socket, says hello, subscribes to robot.state, sends
 robot.move at 20 Hz for a few seconds, then robot.stop. Every message is one
