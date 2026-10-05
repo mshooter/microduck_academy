@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from examples.client import DuckClient
+from microduck_academy.hal_interfaces.client import DuckClient
 from microduck_academy import duckd_sim
 
 ROOT = Path(__file__).resolve().parents[1]
