@@ -1,3 +1,8 @@
+"""
+Frequency module from Robotics Academy exercises. 
+
+Frequency.tick(hz) goes at the end of the student's main loop and holds the loop to roughly that rate.
+"""
 import time
 from datetime import datetime
 
