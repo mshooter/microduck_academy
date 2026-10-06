@@ -1,23 +1,30 @@
-"""Demo usage of the client for the duck server.
+"""Demo usage of the hardware interfaces for the duck server.
 
-Connects to the Unix socket, says hello, subscribes to robot.state, sends
-robot.move at 20 Hz for a few seconds, then robot.stop. Every message is one
-JSON object on one line; see docs/api.md.
+Connects to the Unix socket, says hello, subscribes to robot.state, walks
+forward for a few seconds through MotorsDuck, printing the pose from
+OdometryDuck, then stops.
 
-Deliberately wire-level: no setV()/getImage() here, those belong in HAL.py.
+MotorsDuck resends robot.move at 20 Hz in a background thread, so the loop
+below only sets the target speed once. For the raw JSON messages, see
+docs/api.md.
 
-Cannot run until duckd_sim.py exists; it is that server's first test.
+Start duckd_sim.py first, then:
+    uv run python examples/demo.py 
 
-    uv run python examples/client.py --socket /tmp/duckd.sock --vx 0.3 --seconds 5
+To run for a specific socket, vx or length of time:
+    uv run python examples/demo.py --socket /tmp/duckd.sock --vx 0.3 --seconds 5
 """
 
 import argparse
 import time
 
 from microduck_academy.hal_interfaces.client import API_VERSION, DuckClient
+from microduck_academy.hal_interfaces.motors import MotorsDuck
+from microduck_academy.hal_interfaces.odometry import OdometryDuck
 
 
 def main() -> None:
+    # args parser
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--socket", default="/tmp/duckd.sock")
     ap.add_argument(
@@ -29,23 +36,29 @@ def main() -> None:
     ap.add_argument("--seconds", type=float, default=5.0)
     args = ap.parse_args()
 
+    # instantiate client and connect
     duck = DuckClient(args.socket)
     print("hello ->", duck.call("hello", {"api_version": API_VERSION}))
     print("subscribe ->", duck.call("robot.subscribe", {"hz": 10}))
 
-    # Continuous intent: resend at 20 Hz or the server lets it expire.
+    # instantiate hardware interfaces
+    motors = MotorsDuck(duck)
+    odometry = OdometryDuck(duck)
+
+    # walk forward for a few seconds
+    motors.sendV(args.vx)
     t_end = time.monotonic() + args.seconds
     while time.monotonic() < t_end:
-        duck.notify("robot.move", {"vx": args.vx, "vy": 0.0, "vyaw": 0.0})
-        s = duck.state()
-        if s is not None:
-            x, y, _ = s["odom"]["position"]
-            print(
-                f"t={s['t']:.2f} policy={s['policy']} fallen={s['safety']['fallen']} x={x:.2f} y={y:.2f}"
-            )
-        time.sleep(0.05)
+        pose = odometry.getPose3d()
+        print(f"t={pose.timeStamp:.2f} x={pose.x:.2f} y={pose.y:.2f} yaw={pose.yaw:.2f}")
+        time.sleep(0.1)
 
-    print("stop ->", duck.call("robot.stop"))
+    # stop and close motors
+    motors.stop()
+    motors.close()
+
+    # close connection
+    duck.close()
 
 
 if __name__ == "__main__":
