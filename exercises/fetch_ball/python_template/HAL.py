@@ -1,6 +1,6 @@
 """Hardware abstraction layer.
 
-Student-facing robot API. Connect to the already running server when imported.
+Student-facing robot API. It connects to the already running server when imported.
 """
 
 from microduck_academy.hal_interfaces.camera import CameraDuck
