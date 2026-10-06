@@ -137,7 +137,8 @@ def test_example_client_script_runs_against_the_server(server):
         cwd=ROOT, capture_output=True, text=True, timeout=20,
     )
     assert out.returncode == 0, out.stderr
-    assert "hello ->" in out.stdout and "stop -> {'accepted': True}" in out.stdout
+    assert "hello ->" in out.stdout and "subscribe -> {'accepted': True" in out.stdout
+    assert "t=" in out.stdout and "x=" in out.stdout, "demo printed no odometry poses"
 
 
 # -- physics, real time ----------------------------------------------------------
