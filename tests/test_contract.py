@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from examples.client import DuckClient
+from microduck_academy.hal_interfaces.client import DuckClient
 from microduck_academy import duckd_sim
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -133,11 +133,12 @@ def test_sim_frame_does_not_hold_the_sim_lock_while_rendering(duck, server, monk
 
 def test_example_client_script_runs_against_the_server(server):
     out = subprocess.run(
-        [sys.executable, "examples/client.py", "--socket", server.path, "--seconds", "0.5", "--vx", "0.3"],
+        [sys.executable, "examples/demo.py", "--socket", server.path, "--seconds", "0.5", "--vx", "0.3"],
         cwd=ROOT, capture_output=True, text=True, timeout=20,
     )
     assert out.returncode == 0, out.stderr
-    assert "hello ->" in out.stdout and "stop -> {'accepted': True}" in out.stdout
+    assert "hello ->" in out.stdout and "subscribe -> {'accepted': True" in out.stdout
+    assert "t=" in out.stdout and "x=" in out.stdout, "demo printed no odometry poses"
 
 
 # -- physics, real time ----------------------------------------------------------

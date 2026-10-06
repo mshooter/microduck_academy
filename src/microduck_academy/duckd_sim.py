@@ -58,8 +58,8 @@ from typing import Any, Callable
 
 import mujoco
 
-from . import smoke
-from .rpc import INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND, JsonRpcServer, RpcError
+from microduck_academy import smoke
+from microduck_academy.rpc import INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND, JsonRpcServer, RpcError
 
 log = logging.getLogger("duckd")
 

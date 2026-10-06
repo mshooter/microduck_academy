@@ -1,16 +1,9 @@
-"""Smallest complete client for the duck server. Standard library only.
+"""Smallest complete client for the duck server. 
 
-Connects to the Unix socket, says hello, subscribes to robot.state, sends
-robot.move at 20 Hz for a few seconds, then robot.stop. Every message is one
-JSON object on one line; see docs/api.md.
+The plumbing required to send and receive messages from the robot.
+In Academy terms, this is the rclpy
 
-Deliberately wire-level: no setV()/getImage() here, those belong in HAL.py.
-
-Cannot run until duckd_sim.py exists; it is that server's first test.
-
-    uv run python examples/client.py --socket /tmp/duckd.sock --vx 0.3 --seconds 5
 """
-import argparse
 import json
 import socket
 import threading
@@ -18,9 +11,10 @@ import time
 
 API_VERSION = 16  # duck-ipc-proto lib.rs line 164, commit 590b986
 
+DEFAULT_SOCKET = "/tmp/duckd.sock"
 
 class DuckClient:
-    def __init__(self, path: str):
+    def __init__(self, path: str = DEFAULT_SOCKET):
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self.sock.connect(path)
@@ -86,31 +80,3 @@ class DuckClient:
         except OSError:
             pass
         self.sock.close()
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--socket", default="/tmp/duckd.sock")
-    ap.add_argument("--vx", type=float, default=0.3, help="m/s; below ~0.25 the walker does not move")
-    ap.add_argument("--seconds", type=float, default=5.0)
-    args = ap.parse_args()
-
-    duck = DuckClient(args.socket)
-    print("hello ->", duck.call("hello", {"api_version": API_VERSION}))
-    print("subscribe ->", duck.call("robot.subscribe", {"hz": 10}))
-
-    # Continuous intent: resend at 20 Hz or the server lets it expire.
-    t_end = time.monotonic() + args.seconds
-    while time.monotonic() < t_end:
-        duck.notify("robot.move", {"vx": args.vx, "vy": 0.0, "vyaw": 0.0})
-        s = duck.state()
-        if s is not None:
-            x, y, _ = s["odom"]["position"]
-            print(f"t={s['t']:.2f} policy={s['policy']} fallen={s['safety']['fallen']} x={x:.2f} y={y:.2f}")
-        time.sleep(0.05)
-
-    print("stop ->", duck.call("robot.stop"))
-
-
-if __name__ == "__main__":
-    main()
