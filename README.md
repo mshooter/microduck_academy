@@ -38,12 +38,12 @@ uv fetches Python 3.12 if your machine lacks it.
 ```bash
 uv run python -m microduck_academy.duckd_sim            # terminal 1: headless, listens on /tmp/duckd.sock
 uv run python -m microduck_academy.duckd_sim --viewer   # same, with a MuJoCo window (on macOS: replace python with mjpython)
-uv run python examples/client.py                         # terminal 2: hello, subscribe, walk 5 s, stop
+uv run python examples/demo.py                           # terminal 2: hello, subscribe, walk 5 s, stop
 ```
 
 The server speaks [`docs/api.md`](docs/api.md): the real robot's `robot.*` intents over a Unix
 socket, one JSON-RPC object per line, plus `sim.frame`, `sim.reset` and `sim.spawnBall`.
-`tests/test_contract.py` runs the example client against it.
+`tests/test_contract.py` runs the demo against it.
 
 Versions are pinned to Pollen's training repo (MuJoCo 3.10.0, onnxruntime 1.24.4,
 numpy 2.4.1). On macOS, MuJoCo's viewer window needs `mjpython` instead of `python`;
@@ -51,7 +51,7 @@ headless use is unaffected.
 
 ## Layout
 
-Read in this order if you are new: `docs/api.md` (the quick start at the top), `examples/client.py`,
+Read in this order if you are new: `docs/api.md` (the quick start at the top), `hal_interfaces/client.py`,
 then `duckd_sim.py`. Each file starts with a docstring saying what it is for.
 
 | path | what it is |
@@ -61,11 +61,12 @@ then `duckd_sim.py`. Each file starts with a docstring saying what it is for.
 | `src/microduck_academy/rpc.py` | JSON-RPC over a Unix socket, one object per line. Knows nothing about ducks; reusable for any handler |
 | `src/microduck_academy/smoke.py` | Model loading, the two halves of the control loop (policy and physics), pose and camera helpers. The server is built from these |
 | `src/microduck_academy/vendor/infer_policy.py` | Pollen's policy loop, copied unmodified (see `NOTICE`). Never edit; override in code |
-| `examples/client.py` | The smallest complete client, standard library only. What a HAL sits on top of |
+| `src/microduck_academy/hal_interfaces/client.py` | The connection to the server, standard library only. What the `hal_interfaces` classes sit on |
+| `examples/demo.py` | Walks the duck for a few seconds through `MotorsDuck` and `OdometryDuck` |
 | `assets/microduck/`, `assets/policies/` | The robot model and the nine ONNX policies, copied unmodified from Pollen (see `NOTICE`) |
 | `tests/test_assets.py` | The vendored files are complete and have the shapes the code relies on |
 | `tests/test_smoke.py` | The policies walk in our loop and the camera renders |
-| `tests/test_contract.py` | The server and the example client agree with `docs/api.md`, over a real socket |
+| `tests/test_contract.py` | The server, the client and the demo agree with `docs/api.md`, over a real socket |
 
 ## Troubleshooting
 
