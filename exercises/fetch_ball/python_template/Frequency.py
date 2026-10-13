@@ -10,6 +10,15 @@ start_time_internal_freq_control = None
 
 
 def tick(ideal_cycle: int = 50):
+    """Hold the student's main loop to a fixed rate: call Frequency.tick(hz) at the end of each loop.
+
+    Copied from JdeRobot's Robotics Academy, exercises/follow_line/python_template/Frequency.py
+    (https://github.com/JdeRobot/RoboticsAcademy, branch humble-devel, commit ff8b1bf), only this
+    docstring added. Kept identical so it behaves like every other Academy exercise.
+
+    Licence: GNU GPL v3.0, as stated in the Robotics Academy repository. Unlike the rest of this
+    repository (Apache 2.0), this file is under the GPL. See NOTICE.
+    """
     global start_time_internal_freq_control
     finish_time = datetime.now()
     ideal_ms = 1000 / ideal_cycle
