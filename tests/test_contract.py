@@ -49,14 +49,6 @@ def duck(server):
     d.close()                                             # so the server stops streaming to a dead socket
 
 
-def wait_for_state(duck, timeout=2.0):
-    deadline = time.monotonic() + timeout
-    while duck.state() is None and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert duck.state() is not None, "no robot.state notification arrived"
-    return duck.state()
-
-
 # -- wire shapes ------------------------------------------------------------------
 
 def test_hello_reply_has_documented_fields(duck):
@@ -68,7 +60,7 @@ def test_hello_reply_has_documented_fields(duck):
 def test_state_frame_has_documented_keys_and_nested_fallen(duck):
     reply = duck.call("robot.subscribe", {"hz": 50})
     assert reply["accepted"] is True
-    state = wait_for_state(duck)
+    state = duck.wait_for_state()
     assert set(state) == STATE_KEYS
     assert set(state["safety"]) == SAFETY_KEYS
     assert state["safety"]["fallen"] is False
@@ -145,7 +137,7 @@ def test_example_client_script_runs_against_the_server(server):
 
 def test_walking_moves_the_duck_forward(duck):
     duck.call("robot.subscribe", {"hz": 20})
-    first = wait_for_state(duck)
+    first = duck.wait_for_state()
     x0, t0 = first["odom"]["position"][0], first["t"]
     wall_limit = time.monotonic() + 10.0
     while duck.state()["t"] - t0 < 3.0 and time.monotonic() < wall_limit:   # 3 s of simulated time
@@ -162,7 +154,7 @@ def test_walking_moves_the_duck_forward(duck):
 def wait_sim_seconds(duck, seconds, wall_limit=10.0):
     """Wait until the server's own clock has advanced `seconds`. The deadman and the policy run on
     sim time, which falls behind wall time on a slow CI runner, so sleeping wall time is flaky."""
-    t0 = wait_for_state(duck)["t"]
+    t0 = duck.wait_for_state()["t"]
     deadline = time.monotonic() + wall_limit
     while duck.state()["t"] - t0 < seconds:
         assert time.monotonic() < deadline, f"only {duck.state()['t'] - t0:.2f} s simulated in {wall_limit} s"

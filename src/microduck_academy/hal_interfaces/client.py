@@ -1,9 +1,10 @@
-"""Smallest complete client for the duck server. 
+"""Smallest complete client for the duck server.
 
 The plumbing required to send and receive messages from the robot.
 In Academy terms, this is the rclpy
 
 """
+
 import json
 import socket
 import threading
@@ -12,6 +13,7 @@ import time
 API_VERSION = 16  # duck-ipc-proto lib.rs line 164, commit 590b986
 
 DEFAULT_SOCKET = "/tmp/duckd.sock"
+
 
 class DuckClient:
     def __init__(self, path: str = DEFAULT_SOCKET):
@@ -40,7 +42,9 @@ class DuckClient:
             msg["params"] = params
         self._send(msg)
 
-    def call(self, method: str, params: dict | None = None, timeout: float = 2.0) -> dict:
+    def call(
+        self, method: str, params: dict | None = None, timeout: float = 2.0
+    ) -> dict:
         with self.lock:
             msg_id = self.next_id
             self.next_id += 1
@@ -72,6 +76,21 @@ class DuckClient:
     def state(self) -> dict | None:
         with self.lock:
             return self.last_state
+
+    def wait_for_state(self, timeout: float = 2.0) -> dict:
+        """Block until the first robot.state arrives.
+
+        Subscribe first.
+        """
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if (state := self.state()) is not None:
+                return state
+            time.sleep(0.005)
+
+        raise TimeoutError(
+            f"no state received within {timeout}s; did you call robot.subscribe?"
+        )
 
     def close(self) -> None:
         """Close the socket; the server then stops streaming to us."""

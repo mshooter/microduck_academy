@@ -12,6 +12,7 @@ from microduck_academy.hal_interfaces.odometry import OdometryDuck
 duck = DuckClient()
 duck.call("hello", {"api_version": API_VERSION})
 duck.call("robot.subscribe", {"hz": 50})
+duck.wait_for_state()  # raises if nothing arrives
 
 # Build interfaces
 odometry = OdometryDuck(duck)
@@ -44,7 +45,7 @@ def getPose3d():
 
 
 def isFallen() -> bool:
-    return (duck.state() or {}).get("safety", {}).get("fallen", False)
+    return duck.state()["safety"]["fallen"]
 
 
 def lookAt(x: float, y: float, z: float) -> bool:
