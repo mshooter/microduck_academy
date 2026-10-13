@@ -19,6 +19,7 @@ motors = MotorsDuck(duck)
 camera = CameraDuck(duck)
 
 
+# ------- Sensors and actuators common to many robots go through a hal_interfaces class -------
 def setV(v):
     motors.sendV(float(v))
 
@@ -39,7 +40,9 @@ def getPose3d():
     return odometry.getPose3d()
 
 
-# ------- The following have no interface yet -------
+# ------- Duck-specific functions are written directly into each exercise's own HAL.py -------
+
+
 def isFallen() -> bool:
     return (duck.state() or {}).get("safety", {}).get("fallen", False)
 
