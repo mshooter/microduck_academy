@@ -6,19 +6,13 @@ DuckClient bound to that path before the import. One server and one HAL for
 the whole module; physics tests run in real time, so this file takes a few seconds.
 """
 
-import contextlib
 import functools
 import importlib.util
-import io
-import os
-import shutil
-import tempfile
 import time
 from pathlib import Path
 
 import numpy as np
 import pytest
-from microduck_academy import duckd_sim
 from microduck_academy.hal_interfaces import client
 from microduck_academy.hal_interfaces.odometry import Pose3d
 
@@ -29,22 +23,6 @@ HAL_PATH = (
     / "python_template"
     / "HAL.py"
 )
-
-
-@pytest.fixture(scope="module")
-def server():
-    # Short path on purpose: macOS limits Unix socket paths to ~104 bytes. See test_contract.py.
-    folder = tempfile.mkdtemp(prefix="duck-", dir="/tmp")
-    path = os.path.join(folder, "duck.sock")
-    try:
-        with contextlib.redirect_stdout(
-            io.StringIO()
-        ):  # Pollen's loop prints on every command
-            with duckd_sim.DuckServer(path) as s:
-                yield s
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
-
 
 @pytest.fixture(scope="module")
 def hal(server):
@@ -62,10 +40,10 @@ def hal(server):
 
 
 @pytest.fixture
-def fresh(hal, server):
+def fresh(hal, server, wait_sim_seconds):
     """Each test starts standing at the origin with no velocity command."""
     hal.stop()
-    t_before = wait_sim_seconds(hal, 0.2)[
+    t_before = wait_sim_seconds(hal.duck, 0.2)[
         "t"
     ]  # > 0, even on a server that has just started
     server.sim.reset()  # also rewinds the server's clock to 0
@@ -73,20 +51,8 @@ def fresh(hal, server):
     while hal.duck.state()["t"] >= t_before:  # skip frames sent before the reset
         assert time.monotonic() < deadline, "no robot.state arrived after sim.reset"
         time.sleep(0.01)
-    wait_sim_seconds(hal, 0.3)
+    wait_sim_seconds(hal.duck, 0.3)
     return hal
-
-
-def wait_sim_seconds(hal, seconds, wall_limit=10.0):
-    """Wait on the server's clock, not the wall's: sim time falls behind on a slow CI runner."""
-    deadline = time.monotonic() + wall_limit
-    t0 = hal.duck.state()["t"]
-    while hal.duck.state()["t"] - t0 < seconds:
-        assert (
-            time.monotonic() < deadline
-        ), f"only {hal.duck.state()['t'] - t0:.2f} s simulated in {wall_limit} s"
-        time.sleep(0.02)
-    return hal.duck.state()
 
 
 # -- import and sensors ------------------------------------------------------------
@@ -118,11 +84,11 @@ def test_get_image_is_bgr_640x360(fresh):
 # -- motors, real time --------------------------------------------------------------
 
 
-def test_set_v_once_keeps_walking_past_the_expiry(fresh):
+def test_set_v_once_keeps_walking_past_the_expiry(fresh, wait_sim_seconds):
     """One setV call, no resend from the test: MotorsDuck's thread must keep robot.move alive."""
     x0 = fresh.getPose3d().x
     fresh.setV(0.3)
-    state = wait_sim_seconds(fresh, 3.0)  # 6 x MOVE_EXPIRY
+    state = wait_sim_seconds(fresh.duck, 3.0)  # 6 x MOVE_EXPIRY
     assert state["move"]["applied"][0] == pytest.approx(0.3)
     assert (
         "limited_by" not in state["move"]
@@ -133,18 +99,18 @@ def test_set_v_once_keeps_walking_past_the_expiry(fresh):
     assert fresh.isFallen() is False
 
 
-def test_set_w_is_sent_as_vyaw(fresh):
+def test_set_w_is_sent_as_vyaw(fresh, wait_sim_seconds):
     fresh.setW(0.5)
-    state = wait_sim_seconds(fresh, 1.0)
+    state = wait_sim_seconds(fresh.duck, 1.0)
     assert state["move"]["requested"][2] == pytest.approx(0.5)
 
 
-def test_stop_zeroes_the_velocity(fresh):
+def test_stop_zeroes_the_velocity(fresh, wait_sim_seconds):
     fresh.setV(0.3)
-    wait_sim_seconds(fresh, 0.5)
+    wait_sim_seconds(fresh.duck, 0.5)
     fresh.stop()
     state = wait_sim_seconds(
-        fresh, 1.0
+        fresh.duck, 1.0
     )  # longer than one resend period: the loop sends zeros now
     assert state["move"]["requested"] == [0.0, 0.0, 0.0]
     assert state["move"]["applied"] == [0.0, 0.0, 0.0]
