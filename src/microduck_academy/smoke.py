@@ -15,7 +15,7 @@ import mujoco
 import mujoco.viewer
 import numpy as np
 
-from .vendor.infer_policy import PolicyInference
+from microduck_academy.vendor.infer_policy import PolicyInference
 
 # --- setup -------------------------------------------------------------------
 # TODO: Works for an editable install (uv sync). If the package is ever installed non-editable,
