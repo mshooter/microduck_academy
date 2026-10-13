@@ -123,7 +123,7 @@ def test_sim_frame_does_not_hold_the_sim_lock_while_rendering(duck, server, monk
     assert lock_free_during_render == [True], "the control loop could not take the lock during a render"
 
 
-def test_example_client_script_runs_against_the_server(server):
+def test_demo_script_runs_against_the_server(server):
     out = subprocess.run(
         [sys.executable, "examples/demo.py", "--socket", server.path, "--seconds", "0.5", "--vx", "0.3"],
         cwd=ROOT, capture_output=True, text=True, timeout=20,
