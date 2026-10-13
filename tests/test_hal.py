@@ -6,14 +6,12 @@ DuckClient bound to that path before the import. One server and one HAL for
 the whole module; physics tests run in real time, so this file takes a few seconds.
 """
 
-import functools
 import importlib.util
 import time
 from pathlib import Path
 
 import numpy as np
 import pytest
-from microduck_academy.hal_interfaces import client
 from microduck_academy.hal_interfaces.odometry import Pose3d
 
 HAL_PATH = (
@@ -28,9 +26,7 @@ HAL_PATH = (
 def hal(server):
     """Import HAL.py as student code would, connected to the test server."""
     with pytest.MonkeyPatch.context() as mp:
-        mp.setattr(
-            client, "DuckClient", functools.partial(client.DuckClient, server.path)
-        )
+        mp.setenv("DUCK_SOCKET", str(server.path))
         spec = importlib.util.spec_from_file_location("HAL", HAL_PATH)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)  # connects, says hello, subscribes

@@ -6,6 +6,7 @@ rclpy (the ROS 2 Python library) plays in the Academy's hal_interfaces.
 """
 
 import json
+import os
 import socket
 import threading
 import time
@@ -16,7 +17,8 @@ DEFAULT_SOCKET = "/tmp/duckd.sock"
 
 
 class DuckClient:
-    def __init__(self, path: str = DEFAULT_SOCKET):
+    def __init__(self, path: str | None = None):
+        path = path or os.environ.get("DUCK_SOCKET", DEFAULT_SOCKET)
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self.sock.connect(path)
