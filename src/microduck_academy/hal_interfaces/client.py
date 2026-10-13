@@ -1,8 +1,8 @@
-"""Smallest complete client for the duck server.
+"""Client for the duck server, used by every class in hal_interfaces.
 
-The plumbing required to send and receive messages from the robot.
-In Academy terms, this is the rclpy
-
+The connection to the duck server: sends requests and notifications,
+matches replies by id, keeps the latest robot.state.It plays the role
+rclpy (the ROS 2 Python library) plays in the Academy's hal_interfaces.
 """
 
 import json
