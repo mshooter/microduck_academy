@@ -1,8 +1,13 @@
 """
 Camera interface to extract BGR image from sim.frame
 
-Follows the Academy's CameraNode. This interface uses a sim.* method, which exists only in
-the simulator and would need replacement in the real duck.
+Follows the Academy's CameraNode. When porting to hardware, this is the only class 
+to replace. It uses `sim.frame` which exists only in the simulator. Everything else
+in `hal_interfaces` already uses the real duck's protocol. 
+
+The real duck streams images from a separate video service. Its camera is mounted
+90 degrees from upright, so frames arrive sideways. The hardware CameraDuck must
+rotate them upright. See docs/api.md.
 """
 
 import base64
