@@ -1,7 +1,7 @@
 """Client for the duck server, used by every class in hal_interfaces.
 
 The connection to the duck server: sends requests and notifications,
-matches replies by id, keeps the latest robot.state.It plays the role
+matches replies by id, keeps the latest robot.state. It plays the role
 rclpy (the ROS 2 Python library) plays in the Academy's hal_interfaces.
 """
 
