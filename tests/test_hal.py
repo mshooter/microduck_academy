@@ -41,6 +41,8 @@ def hal(server):
     yield module
     module.motors.close()
     module.duck.close()
+    # don't leave this HAL cached for later imports
+    sys.modules.pop("HAL", None)  
 
 
 @pytest.fixture
