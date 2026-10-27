@@ -1,12 +1,13 @@
 """The fetch_ball HAL drives the server the way student code would, over a real socket.
 
 HAL.py connects to the default socket when imported, like Academy's HALs. Here
-it is pointed at a test server on a temporary socket instead, by swapping in a
-DuckClient bound to that path before the import. One server and one HAL for
-the whole module; physics tests run in real time, so this file takes a few seconds.
+it is pointed at a test server on a temporary socket instead, via the DUCK_SOCKET env var.
+One server and one HAL for the whole module; physics tests run in real time,
+so this file takes a few seconds.
 """
 
-import importlib.util
+import importlib
+import sys
 import time
 from pathlib import Path
 
@@ -14,24 +15,31 @@ import numpy as np
 import pytest
 from microduck_academy.hal_interfaces.odometry import Pose3d
 
-HAL_PATH = (
-    Path(__file__).resolve().parents[1]
-    / "exercises"
-    / "fetch_ball"
-    / "python_template"
-    / "HAL.py"
+EXERCISE = (
+    Path(__file__).resolve().parents[1] / "exercises" / "fetch_ball" / "python_template"
 )
+
 
 @pytest.fixture(scope="module")
 def hal(server):
-    """Import HAL.py as student code would, connected to the test server."""
+    """Import HAL.py the way a student's script does.
+
+    HAL.py is imported from its own folder and connects to the test server.
+    """
     with pytest.MonkeyPatch.context() as mp:
-        mp.setenv("DUCK_SOCKET", str(server.path))
-        spec = importlib.util.spec_from_file_location("HAL", HAL_PATH)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # connects, says hello, subscribes
+        # monkeypatch env var, so that the DuckClient created by HAL.py 
+        # connects to the test server
+        mp.setenv("DUCK_SOCKET", server.path)
+
+        # monkeypatch syspath to make exercise folder importable
+        mp.syspath_prepend(str(EXERCISE))
+
+        # pop any possibly cached HAL module before re-importing
+        sys.modules.pop("HAL", None)
+        module = importlib.import_module("HAL")
+
     yield module
-    module.motors.close()  # stop resending before closing the socket
+    module.motors.close()
     module.duck.close()
 
 
