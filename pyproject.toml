@@ -20,9 +20,14 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "black==26.5.1",
     "pytest>=9.1.1",
 ]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]      # so tests can import examples/client.py
 testpaths = ["tests"]
+
+[tool.black]
+target-version = ["py312"]
+extend-exclude = "src/microduck_academy/vendor" # Pollen's files must not be touched 
