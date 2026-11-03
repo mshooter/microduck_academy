@@ -1,4 +1,5 @@
 """The shipped policies walk in our loop, and the head camera renders (when a GL context exists)."""
+
 import io
 import contextlib
 
@@ -11,7 +12,7 @@ from microduck_academy import smoke
 @pytest.fixture(scope="module")
 def walked():
     """One 5 s walk, shared by the tests below (takes about two seconds)."""
-    with contextlib.redirect_stdout(io.StringIO()): 
+    with contextlib.redirect_stdout(io.StringIO()):
         return smoke.run(seconds=5.0, vx=smoke.DEFAULT_VX, frame_path=None)
 
 
@@ -38,7 +39,9 @@ def test_render_fails_fast_after_the_first_gl_failure(monkeypatch):
     for _ in range(2):
         with pytest.raises(RuntimeError):
             smoke.render_frame(model=None, data=None)
-    assert len(calls) == 1, "the renderer must be tried once, then the first error reused"
+    assert (
+        len(calls) == 1
+    ), "the renderer must be tried once, then the first error reused"
 
 
 def test_head_camera_renders_forward_and_upright():
@@ -54,7 +57,7 @@ def test_head_camera_renders_forward_and_upright():
     assert up[2] > 0.99, "camera must be upright (+z up), not rolled a quarter turn"
     try:
         frame = smoke.render_frame(model, data)
-    except Exception as e:          # no EGL/GLX/CGL context on this machine (headless CI)
+    except Exception as e:  # no EGL/GLX/CGL context on this machine (headless CI)
         pytest.skip(f"no OpenGL context for offscreen rendering: {e}")
     assert frame.shape == (smoke.FRAME_H, smoke.FRAME_W, 3)
     assert frame.std() > 10, "a flat image means the camera is looking into geometry"

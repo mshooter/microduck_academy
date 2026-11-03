@@ -10,6 +10,7 @@ Cannot run until duckd_sim.py exists; it is that server's first test.
 
     uv run python examples/client.py --socket /tmp/duckd.sock --vx 0.3 --seconds 5
 """
+
 import argparse
 import json
 import socket
@@ -46,7 +47,9 @@ class DuckClient:
             msg["params"] = params
         self._send(msg)
 
-    def call(self, method: str, params: dict | None = None, timeout: float = 2.0) -> dict:
+    def call(
+        self, method: str, params: dict | None = None, timeout: float = 2.0
+    ) -> dict:
         with self.lock:
             msg_id = self.next_id
             self.next_id += 1
@@ -91,7 +94,12 @@ class DuckClient:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--socket", default="/tmp/duckd.sock")
-    ap.add_argument("--vx", type=float, default=0.3, help="m/s; below ~0.25 the walker does not move")
+    ap.add_argument(
+        "--vx",
+        type=float,
+        default=0.3,
+        help="m/s; below ~0.25 the walker does not move",
+    )
     ap.add_argument("--seconds", type=float, default=5.0)
     args = ap.parse_args()
 
@@ -106,7 +114,9 @@ def main() -> None:
         s = duck.state()
         if s is not None:
             x, y, _ = s["odom"]["position"]
-            print(f"t={s['t']:.2f} policy={s['policy']} fallen={s['safety']['fallen']} x={x:.2f} y={y:.2f}")
+            print(
+                f"t={s['t']:.2f} policy={s['policy']} fallen={s['safety']['fallen']} x={x:.2f} y={y:.2f}"
+            )
         time.sleep(0.05)
 
     print("stop ->", duck.call("robot.stop"))
