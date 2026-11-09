@@ -10,8 +10,8 @@ from microduck_academy.hal_interfaces.client import DuckClient
 
 
 @pytest.fixture
-def listener():
-    """Listening socket (no data)"""
+def fake_server():
+    """A server that just listens to a socket (no data)"""
     # Define unique tmp path for socket
     folder = tempfile.mkdtemp(prefix="duck-", dir="/tmp")
     path = os.path.join(folder, "duck.sock")
@@ -30,13 +30,13 @@ def listener():
     shutil.rmtree(folder, ignore_errors=True)
 
 
-def test_client_connecting_to_stale_socket(listener):
+def test_client_connecting_to_stale_socket(fake_server):
     """Connecting to a stale socket raises and shows hint."""
-    # Get path listener bound to
-    path = listener.getsockname()
+    # Get path the listener bound to
+    path = fake_server.getsockname()
 
     # Close socket: file stays but no-one is listening
-    listener.close()
+    fake_server.close()
 
     # ConnectionRefusedError should be caught
     with pytest.raises(SystemExit, match="start duckd_sim.py"):
