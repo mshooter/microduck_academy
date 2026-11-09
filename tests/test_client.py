@@ -1,4 +1,4 @@
-"""DuckClient notices when the server connection drops."""
+"""Tests for DuckClient's connection handling."""
 
 import json
 import os
@@ -32,16 +32,18 @@ def listening_skt():
     sock.close()
     shutil.rmtree(folder, ignore_errors=True)
 
+
 @pytest.fixture
 def duck(listening_skt):
     """Start a duck client that connects to the minimal fake server.
-    
-    connect() succeeds before listening_socket accepts connections 
+
+    connect() succeeds before listening_socket accepts connections
     because listening_socket accepts one waiting connection.
     """
     d = DuckClient(listening_skt.getsockname())
     yield d
     d.close()
+
 
 def send(connection_socket, msg):
     """Push a message to the client.
@@ -68,7 +70,7 @@ def test_client_raises_when_stale_socket(listening_skt):
 
 def test_state_raises_when_lost_connection(listening_skt, duck):
     """Check state() raises when connection is lost.
-    
+
     accept() returns a new socket (the server's end of this client's
     connection); the test uses it to send data to the client.
     """
@@ -109,11 +111,56 @@ def test_call_raises_when_lost_connection(listening_skt, duck):
     # Play server in another thread: reads request and die
     def read_request_then_close():
         # read bytes that arrive at the socket
-        server_end_skt.recv(4096)  
+        server_end_skt.recv(4096)
         # close before replying
-        server_end_skt.close()     
+        server_end_skt.close()
+
     threading.Thread(target=read_request_then_close).start()
 
     # call() should notice server has died
     with pytest.raises(ConnectionError, match="lost connection"):
         duck.call("hello", timeout=2.0)
+
+
+def test_concurrent_sends(listening_skt, duck):
+    """Two threads sending at once should produce whole JSON lines.
+
+    Mimics the motor thread streaming robot.move while the main thread
+    sends call()s. Large messages make sendall() write in chunks,
+    so without the send lock the pieces of two messages could mix.
+    """
+    # Accept connection
+    server_end_skt, _ = listening_skt.accept()
+
+    # Start threads that send data to the server
+    n_threads, n_msgs = 2, 300
+    payload = "x" * 100_000
+
+    def sender(thread_idx):
+        for i in range(n_msgs):
+            duck._send({"thread": thread_idx, "i": i, "payload": payload})
+
+    threads = [threading.Thread(target=sender, args=(t,)) for t in range(n_threads)]
+    for t in threads:
+        t.start()
+
+    # Read everything the client sends while the senders are still running.
+    # The socket only holds a few hundred KB, so sendall() blocks until someone reads;
+    # joining the threads first would hang the test.
+    # Each message ends in one "\n", so there are exactly
+    # n_threads * n_msgs lines even if messages get mixed.
+    reader = server_end_skt.makefile("r", encoding="utf-8")
+    lines = [reader.readline() for _ in range(n_threads * n_msgs)]
+
+    # Wait for each of the senders to finish
+    for t in threads:
+        t.join()
+
+    # Check every line is decodable and messages are not mixed
+    broken = 0
+    for line in lines:
+        try:
+            json.loads(line)
+        except json.JSONDecodeError:
+            broken += 1
+    assert broken == 0, f"{broken} of {len(lines)} lines were garbled"
