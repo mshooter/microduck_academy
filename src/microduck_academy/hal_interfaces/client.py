@@ -17,6 +17,14 @@ DEFAULT_SOCKET = "/tmp/duckd.sock"
 
 
 class DuckClient:
+    """Connection to the duck server over a Unix socket.
+
+    Protocol: JSON-RPC 2.0, one JSON object per line. A *request* carries
+    an id and gets a reply with the same id (see call()). A *notification*
+    has no id and gets no reply (see notify()); the server also sends
+    notifications, such as robot.state.
+    """
+
     def __init__(self, path: str | None = None):
         path = path or os.environ.get("DUCK_SOCKET", DEFAULT_SOCKET)
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
