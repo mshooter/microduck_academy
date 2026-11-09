@@ -9,7 +9,7 @@ git clone git@github.com:mshooter/microduck_academy.git
 cd microduck_academy
 uv sync
 uv run pytest -q
-uv run pre-commit install   # optional: install pre-commit hooks
+uv run prek install   # optional: install pre-commit hooks
 ```
 
 Code is formatted with [Black](https://black.readthedocs.io/), pinned in `pyproject.toml` to
