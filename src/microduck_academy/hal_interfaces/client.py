@@ -22,10 +22,11 @@ class DuckClient:
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             self.sock.connect(path)
-        except FileNotFoundError:
+        # if no socket, or socket is stale (no server behind)
+        except (FileNotFoundError, ConnectionRefusedError):
             raise SystemExit(
-                f"no server listening at {path}: a Unix socket is a file the server "
-                "creates when it starts, so start duckd_sim.py first"
+                f"no server listening at {path}: start duckd_sim.py first "
+                "(the socket file is missing, or left over from a server that stopped)"
             ) from None
         self.reader = self.sock.makefile("r", encoding="utf-8")
         self.next_id = 1
