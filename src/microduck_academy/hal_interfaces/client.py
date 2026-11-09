@@ -32,6 +32,8 @@ class DuckClient:
         self.replies: dict[int, dict] = {}
         self.last_state: dict | None = None
         self.lock = threading.Lock()
+        self._connected = True
+
         threading.Thread(target=self._read_loop, daemon=True).start()
 
     # One JSON object per line. A request carries an id; a notification does not.
@@ -47,13 +49,18 @@ class DuckClient:
     def call(
         self, method: str, params: dict | None = None, timeout: float = 2.0
     ) -> dict:
+        # get message id from next_id
         with self.lock:
             msg_id = self.next_id
             self.next_id += 1
+
+        # send message
         msg = {"jsonrpc": "2.0", "id": msg_id, "method": method}
         if params is not None:
             msg["params"] = params
         self._send(msg)
+
+        # retrieve reply
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self.lock:
@@ -61,22 +68,39 @@ class DuckClient:
                     if "error" in reply:
                         raise RuntimeError(f"{method}: {reply['error']}")
                     return reply.get("result")
+                # fail fast if connection is down
+                self._check_connected()
             time.sleep(0.005)
         raise TimeoutError(f"no reply to {method} (id {msg_id}) within {timeout}s")
 
     # Replies are matched by id, not by order; notifications have no id.
     def _read_loop(self) -> None:
-        for line in self.reader:
-            msg = json.loads(line)
-            if "id" in msg:
-                with self.lock:
-                    self.replies[msg["id"]] = msg
-            elif msg.get("method") == "robot.state":
-                with self.lock:
-                    self.last_state = msg["params"]
+        try:
+            for line in self.reader:
+                msg = json.loads(line)
+                if "id" in msg:
+                    with self.lock:
+                        self.replies[msg["id"]] = msg
+                # for notifications: keep only if method is robot.state
+                elif msg.get("method") == "robot.state":
+                    with self.lock:
+                        # replace previous state with new one
+                        self.last_state = msg["params"]
+        finally: 
+            self._connected = False
+
+
+    def _check_connected(self) -> None:
+        """Raises ConnectionError if the reader thread has stopped.
+        
+        Call while holding self.lock
+        """
+        if not self._connected:
+            raise ConnectionError("lost connection to the duck server") 
 
     def state(self) -> dict | None:
         with self.lock:
+            self._check_connected()
             return self.last_state
 
     def wait_for_state(self, timeout: float = 2.0) -> dict:
