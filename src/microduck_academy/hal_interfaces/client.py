@@ -32,14 +32,19 @@ class DuckClient:
         self.next_id = 1
         self.replies: dict[int, dict] = {}
         self.last_state: dict | None = None
-        self.lock = threading.Lock()
         self._connected = True
+
+        # set up locks
+        self.lock = threading.Lock() # for next_id, replies and last_state
+        self._send_lock = threading.Lock() # to _send
 
         threading.Thread(target=self._read_loop, daemon=True).start()
 
-    # One JSON object per line. A request carries an id; a notification does not.
     def _send(self, msg: dict) -> None:
-        self.sock.sendall((json.dumps(msg) + "\n").encode("utf-8"))
+        """Send one message as a single JSON line."""
+        line = (json.dumps(msg) + "\n").encode("utf-8")
+        with self._send_lock:
+            self.sock.sendall(line)
 
     def notify(self, method: str, params: dict | None = None) -> None:
         msg = {"jsonrpc": "2.0", "method": method}
