@@ -1,0 +1,11 @@
+# Runs Black from the project's own environment, so the version is the one pinned in
+# pyproject.toml / uv.lock (the same one CI uses). No second pin to keep in sync.
+repos:
+  - repo: local
+    hooks:
+      - id: black
+        name: black
+        entry: uv run --locked black
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
