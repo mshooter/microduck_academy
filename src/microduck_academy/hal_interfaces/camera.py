@@ -27,7 +27,7 @@ class CameraDuck:
         """Head camera, 360x640x3 BGR uint8."""
         frame = self._duck.call("sim.frame")
 
-        # Check format is as expected
+        # Check format
         if frame["format"] != "jpeg":
             raise ValueError(f"sim.frame: expected a jpeg, got {frame['format']!r}")
 
@@ -36,6 +36,5 @@ class CameraDuck:
                 io.BytesIO(base64.b64decode(frame["data"])),
             ).convert("RGB"),
         )
-        # we return BGR channel order like the other
-        # Academy's getImage() functions
+        # return BGR order like the other Academy's getImage() functions
         return rgb[:, :, ::-1].copy()

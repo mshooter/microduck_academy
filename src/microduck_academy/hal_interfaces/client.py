@@ -55,8 +55,7 @@ class DuckClient:
             try:
                 self.sock.sendall(line)
             except OSError:
-                # report any send failure (e.g. BrokenPipeError) 
-                # as ConnectionError, so students see one error type
+                # report any send failure as ConnectionError, so students see one error type
                 self._connected = False
                 raise ConnectionError("lost connection to the duck server") from None
 
@@ -80,7 +79,7 @@ class DuckClient:
             msg["params"] = params
         self._send(msg)
 
-        # retrieve reply
+        # retrieve reply with timeout
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             with self.lock:
@@ -88,12 +87,11 @@ class DuckClient:
                     if "error" in reply:
                         raise RuntimeError(f"{method}: {reply['error']}")
                     return reply.get("result")
-                # fail fast if connection is down
-                self._check_connected()
+                self._check_connected() # fail fast if connection is down
             time.sleep(0.005)
         raise TimeoutError(f"no reply to {method} (id {msg_id}) within {timeout}s")
 
-    # Replies are matched by id, not by order; notifications have no id.
+    # Replies are matched by id; notifications have no id.
     def _read_loop(self) -> None:
         try:
             for line in self.reader:
@@ -101,14 +99,12 @@ class DuckClient:
                 if "id" in msg:
                     with self.lock:
                         self.replies[msg["id"]] = msg
-                # for notifications: keep only if method is robot.state
+                # if notification is about robot.state: update state
                 elif msg.get("method") == "robot.state":
                     with self.lock:
-                        # replace previous state with new one
                         self.last_state = msg["params"]
         except OSError:
-            # we silence other OSErrors because state() and call() already report 
-            # clearly the lost connection
+            # silence OSErrors (state() and call() already report the lost connection)
             pass  
         finally: 
             self._connected = False

@@ -24,7 +24,6 @@ from microduck_academy.hal_interfaces.odometry import OdometryDuck
 
 
 def main() -> None:
-    # args parser
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--socket", default="/tmp/duckd.sock")
     ap.add_argument(
