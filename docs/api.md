@@ -222,6 +222,27 @@ names the scripted move already holding the robot.
 `accepted: true` means the skill started, not that it finished. Watch
 `robot.state.policy` to see when the walker is back in charge.
 
+### robot.enable
+
+Switch the walking policy on or off. Switching it off returns the
+duck to its default pose and holds it there, nothing else moves the joints
+until `sim.setJointTargets` arrives. Switching it on hands control back to
+the policy.
+
+| field | type | meaning |
+|---|---|---|
+| `on` | bool | `true` runs the policy, `false` stops it |
+| `toggle` | bool, optional | flip the current state instead; `on` is then ignored. Default `false` |
+
+```text
+→ {"jsonrpc":"2.0","id":10,"method":"robot.enable","params":{"on":false}}
+← {"jsonrpc":"2.0","id":10,"result":{"accepted":true,"reason":"policy off"}}
+```
+
+The reply's `reason` names the state the duck ended in, `policy on` or
+`policy off`, which is how a client using `toggle` learns where it is.
+While the policy is off, `robot.state.policy` is `held`.
+
 ### robot.subscribe
 
 Turn the connection into a stream of `robot.state` notifications. Discrete.
@@ -326,13 +347,19 @@ the floor is not visible closer than about 0.5 m ahead.
 
 ### sim.reset
 
-Put the duck back at the origin, standing, and the ball at its start
-position.
+Put the duck back at the origin, standing, facing `+x`.
+
+| field | type | meaning |
+|---|---|---|
+| `seed` | integer, optional | place the ball at a random spot from this seed: `x` from 0.5 to 1.5 m, `y` from -0.5 to 0.5 m, world frame. The same seed always gives the same spot. Without it, the ball goes back to its start position, 0.3 m ahead |
 
 ```text
-→ {"jsonrpc":"2.0","id":7,"method":"sim.reset"}
+→ {"jsonrpc":"2.0","id":7,"method":"sim.reset","params":{"seed":42}}
 ← {"jsonrpc":"2.0","id":7,"result":{"accepted":true}}
 ```
+
+A spot can be outside the camera's view at the start, so a fetch has to
+search for the ball.
 
 ### sim.spawnBall
 
@@ -343,11 +370,32 @@ Place the ball at `x, y` on the floor, world frame, metres.
 ← {"jsonrpc":"2.0","id":8,"result":{"accepted":true}}
 ```
 
+### sim.setJointTargets
+
+Set the servo targets directly, in radians, one per joint in
+`robot.state.joints` order (14 on the simulator). Continuous: send it as a
+notification and keep sending it, like `robot.move`. It only takes effect
+while the policy is off (`robot.enable {"on": false}`).
+
+| field | type | meaning |
+|---|---|---|
+| `targets` | 14 numbers | target angle per joint, radians |
+
+```text
+→ {"jsonrpc":"2.0","method":"sim.setJointTargets","params":{"targets":[0.0,-0.087,-0.458,-0.005,0.453,0.349,0.349,0.0,0.0,0.0,0.087,0.458,0.005,-0.453]}}
+```
+
+The example is the default pose. Targets are clipped to each joint's
+range, and the torque limit stays on. If no `sim.setJointTargets` arrives
+for 0.5 s, the duck goes back to its default pose. A message with the
+wrong number of targets is ignored, like every notification, it gets no
+reply, not even an error.
+
 ## 4. Real-robot methods not implemented here
 
 The real robot has more `robot.*` methods. The simulator answers them with
 error `-32601` (method not found), so a HAL notices instead of silently
-doing nothing: `robot.enable`, `robot.init`, `robot.relax`, `robot.pose`,
+doing nothing: `robot.init`, `robot.relax`, `robot.pose`,
 `robot.mouth`, `robot.sound`, `robot.theremin`, `robot.chorale`,
 `robot.shutdown`, `robot.mode`, `robot.setMode`, plus the `update.*`,
 `net.*`, `system.*`, `pad.*` and `config.*` namespaces. `robot.pose` (body
@@ -380,6 +428,10 @@ Settled when the real daemon's source is read or the real robot is measured.
   has been measured.
 - The real camera's field of view; the simulator uses 45 degrees vertical.
 - `safety.gain` is not sent by the simulator (no servos to read it from).
+- `sim.setJointTargets` exists only in the simulator: the real robot does
+  not accept raw joint commands from clients.
+- With the policy off, the real robot's behaviour beyond returning to its
+  home pose is not known; the simulator holds the default pose.
 
 ## 6. Client and demo
 
@@ -423,6 +475,7 @@ commit. `sim.*` methods have no source; they are ours.
 | `robot.head`; `HeadParams` | 310; 1517 to 1522 |
 | `robot.look`; `LookParams`; `LookResult`; "never has to know which way head_yaw turns" | 313; 1531 to 1539; 1543 to 1549; 1526 |
 | `robot.stop` | 315 |
+| `robot.enable`; `EnableParams` (`on`, `toggle`); off returns to home pose, `reason` names the end state | 317; 1806 to 1825; 1819 to 1822 |
 | `robot.do`; refusal wording; `DoParams`; `Skill` names; `snake_case`; typo is invalid params | 352; 350 to 351; 1693; 1675 to 1687; 1674; 1671 |
 | `robot.subscribe`; `SubscribeParams`; `SubscribeResult` | 416; 1758 to 1761; 1775 to 1800 |
 | `robot.state`; struct | 425; 2560 to 2590 |
