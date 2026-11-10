@@ -43,7 +43,8 @@ class DuckClient:
         self.last_state: dict | None = None
         self._connected = True
 
-        self.lock = threading.Lock()  # for next_id, replies, last_state and _connected
+        # guards next_id, replies, last_state and _connected; also wakes waiting callers
+        self.lock = threading.Condition()
         self._send_lock = threading.Lock()
 
         threading.Thread(target=self._read_loop, daemon=True).start()
@@ -56,7 +57,7 @@ class DuckClient:
                 self.sock.sendall(line)
             except OSError:
                 # report any send failure as ConnectionError, so students see one error type
-                self._connected = False
+                self._mark_disconnected()
                 raise ConnectionError(LOST_CONNECTION) from None
 
     def notify(self, method: str, params: dict | None = None) -> None:
@@ -79,17 +80,20 @@ class DuckClient:
             msg["params"] = params
         self._send(msg)
 
-        # retrieve reply with timeout
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            with self.lock:
-                if (reply := self.replies.pop(msg_id, None)) is not None:
-                    if "error" in reply:
-                        raise RuntimeError(f"{method}: {reply['error']}")
-                    return reply.get("result")
-                self._check_connected()  # fail fast if connection is down
-            time.sleep(0.005)
-        raise TimeoutError(f"no reply to {method} (id {msg_id}) within {timeout}s")
+        def reply_or_disconnected():
+            return msg_id in self.replies or not self._connected
+
+        with self.lock:
+            self.lock.wait_for(reply_or_disconnected, timeout)
+            reply = self.replies.pop(msg_id, None)
+            if reply is None:
+                self._check_connected()
+                raise TimeoutError(
+                    f"no reply to {method} (id {msg_id}) within {timeout}s"
+                )
+        if "error" in reply:
+            raise RuntimeError(f"{method}: {reply['error']}")
+        return reply.get("result")
 
     def _read_loop(self) -> None:
         """Reader thread: hand every incoming line to _handle until the connection ends."""
@@ -100,7 +104,7 @@ class DuckClient:
             # silence OSErrors (state() and call() already report the lost connection)
             pass
         finally:
-            self._connected = False
+            self._mark_disconnected()
 
     def _handle(self, msg: dict) -> None:
         """Keep a reply under its id, or the latest robot.state; ignore other notifications.
@@ -113,6 +117,12 @@ class DuckClient:
                 self.replies[msg["id"]] = msg
             elif msg.get("method") == "robot.state":
                 self.last_state = msg["params"]
+            self.lock.notify_all()
+
+    def _mark_disconnected(self) -> None:
+        with self.lock:
+            self._connected = False
+            self.lock.notify_all()
 
     def _check_connected(self) -> None:
         """Raises ConnectionError if the reader thread has stopped.

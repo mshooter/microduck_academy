@@ -182,3 +182,30 @@ def test_handle_ignores_other_notifications(duck):
 
     assert duck.replies == {}
     assert duck.state() is None
+
+
+def test_call_returns_the_reply_with_its_id(listening_skt, duck):
+    """call() wakes up when the reply for its id arrives and returns its result."""
+    server_end_skt, _ = listening_skt.accept()
+
+    # Play server in another thread: read the request, answer with the same id
+    def reply_to_request():
+        request = json.loads(server_end_skt.makefile("r", encoding="utf-8").readline())
+        send(
+            server_end_skt,
+            {"jsonrpc": "2.0", "id": request["id"], "result": {"api_version": 16}},
+        )
+
+    threading.Thread(target=reply_to_request).start()
+
+    assert duck.call("hello", {"api_version": 16}, timeout=2.0) == {"api_version": 16}
+    server_end_skt.close()
+
+
+def test_call_times_out_when_no_reply(listening_skt, duck):
+    """With the server connected but silent, call() raises TimeoutError, not ConnectionError."""
+    server_end_skt, _ = listening_skt.accept()
+
+    with pytest.raises(TimeoutError, match="no reply to hello"):
+        duck.call("hello", timeout=0.2)
+    server_end_skt.close()
