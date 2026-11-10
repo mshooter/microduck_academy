@@ -53,11 +53,11 @@ than about half a metre ahead.
 ← {"jsonrpc":"2.0","id":4,"result":{"width":640,"height":360,"format":"jpeg","data":"<base64>"}}
 ```
 
-In Python, using the client in `examples/client.py`:
+In Python, using the client in `hal_interfaces/client.py`:
 
 ```python
 import time
-from examples.client import DuckClient          # run from the repo root
+from microduck_academy.hal_interfaces.client import DuckClient
 
 duck = DuckClient("/tmp/duckd.sock")
 duck.call("hello", {"api_version": 16})
@@ -381,21 +381,23 @@ Settled when the real daemon's source is read or the real robot is measured.
 - The real camera's field of view; the simulator uses 45 degrees vertical.
 - `safety.gain` is not sent by the simulator (no servos to read it from).
 
-## 6. Example client
+## 6. Client and demo
 
-[`examples/client.py`](../examples/client.py) is the smallest complete
-client: standard library only, connects, says hello, subscribes, walks for
-a few seconds at 20 Hz, stops. It is deliberately wire-level, not
-Academy-shaped; `setV()`, `getImage()` and friends belong in `HAL.py`, one
-layer up. Read it as "what `hal_interfaces/motors.py` and `camera.py` do
-for ROS, done for this socket".
+[`hal_interfaces/client.py`](../src/microduck_academy/hal_interfaces/client.py)
+is the connection to the server: standard library only, wire-level, not
+Academy-shaped. It plays the role rclpy plays under Academy's
+`hal_interfaces`; `MotorsDuck`, `OdometryDuck` and `CameraDuck` sit on it,
+and `setV()`, `getImage()` and friends belong in `HAL.py`, one layer up.
+
+[`examples/demo.py`](../examples/demo.py) uses it through `MotorsDuck` and
+`OdometryDuck`: says hello, subscribes, walks for a few seconds, stops.
 
 ```bash
 uv run python -m microduck_academy.duckd_sim       # terminal 1
-uv run python examples/client.py                    # terminal 2
+uv run python examples/demo.py                      # terminal 2
 ```
 
-`tests/test_contract.py` runs the client against the server and checks the
+`tests/test_contract.py` runs the client and the demo against the server and checks the
 shapes above, plus that the duck walks, that a move expires, and that
 `robot.look` turns the camera down.
 

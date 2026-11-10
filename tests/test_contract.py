@@ -5,20 +5,14 @@ about a second). Physics tests run in real time, so this file takes a few second
 """
 
 import base64
-import contextlib
-import io
-import os
-import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
 import pytest
-
-from examples.client import DuckClient
 from microduck_academy import duckd_sim
+from microduck_academy.hal_interfaces.client import DuckClient
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,22 +31,6 @@ STATE_KEYS = {
 SAFETY_KEYS = {"fallen", "limp", "gravity"}
 
 
-@pytest.fixture(scope="module")
-def server():
-    # A short path on purpose: Unix socket paths are limited to ~104 bytes on macOS,
-    # and pytest's tmp_path there is longer than that.
-    folder = tempfile.mkdtemp(prefix="duck-", dir="/tmp")
-    path = os.path.join(folder, "duck.sock")
-    try:
-        with contextlib.redirect_stdout(
-            io.StringIO()
-        ):  # Pollen's loop prints on every command
-            with duckd_sim.DuckServer(path) as s:
-                yield s
-    finally:
-        shutil.rmtree(folder, ignore_errors=True)
-
-
 @pytest.fixture
 def duck(server):
     server.sim.reset()
@@ -60,14 +38,6 @@ def duck(server):
     d.call("hello", {"api_version": 16})
     yield d
     d.close()  # so the server stops streaming to a dead socket
-
-
-def wait_for_state(duck, timeout=2.0):
-    deadline = time.monotonic() + timeout
-    while duck.state() is None and time.monotonic() < deadline:
-        time.sleep(0.01)
-    assert duck.state() is not None, "no robot.state notification arrived"
-    return duck.state()
 
 
 # -- wire shapes ------------------------------------------------------------------
@@ -82,7 +52,7 @@ def test_hello_reply_has_documented_fields(duck):
 def test_state_frame_has_documented_keys_and_nested_fallen(duck):
     reply = duck.call("robot.subscribe", {"hz": 50})
     assert reply["accepted"] is True
-    state = wait_for_state(duck)
+    state = duck.wait_for_state()
     assert set(state) == STATE_KEYS
     assert set(state["safety"]) == SAFETY_KEYS
     assert state["safety"]["fallen"] is False
@@ -129,6 +99,7 @@ def test_sim_frame_does_not_hold_the_sim_lock_while_rendering(
 ):
     """A slow render must not stall the 50 Hz loop: the lock is held only to copy the state."""
     import threading
+
     import numpy as np
     from microduck_academy import smoke
 
@@ -154,11 +125,11 @@ def test_sim_frame_does_not_hold_the_sim_lock_while_rendering(
     ], "the control loop could not take the lock during a render"
 
 
-def test_example_client_script_runs_against_the_server(server):
+def test_demo_script_runs_against_the_server(server):
     out = subprocess.run(
         [
             sys.executable,
-            "examples/client.py",
+            "examples/demo.py",
             "--socket",
             server.path,
             "--seconds",
@@ -172,7 +143,8 @@ def test_example_client_script_runs_against_the_server(server):
         timeout=20,
     )
     assert out.returncode == 0, out.stderr
-    assert "hello ->" in out.stdout and "stop -> {'accepted': True}" in out.stdout
+    assert "hello ->" in out.stdout and "subscribe -> {'accepted': True" in out.stdout
+    assert "t=" in out.stdout and "x=" in out.stdout, "demo printed no odometry poses"
 
 
 # -- physics, real time ----------------------------------------------------------
@@ -180,7 +152,7 @@ def test_example_client_script_runs_against_the_server(server):
 
 def test_walking_moves_the_duck_forward(duck):
     duck.call("robot.subscribe", {"hz": 20})
-    first = wait_for_state(duck)
+    first = duck.wait_for_state()
     x0, t0 = first["odom"]["position"][0], first["t"]
     wall_limit = time.monotonic() + 10.0
     while (
@@ -202,21 +174,7 @@ def test_walking_moves_the_duck_forward(duck):
     assert state["safety"]["fallen"] is False
 
 
-def wait_sim_seconds(duck, seconds, wall_limit=10.0):
-    """Wait until the server's own clock has advanced `seconds`. The deadman and the policy run on
-    sim time, which falls behind wall time on a slow CI runner, so sleeping wall time is flaky.
-    """
-    t0 = wait_for_state(duck)["t"]
-    deadline = time.monotonic() + wall_limit
-    while duck.state()["t"] - t0 < seconds:
-        assert (
-            time.monotonic() < deadline
-        ), f"only {duck.state()['t'] - t0:.2f} s simulated in {wall_limit} s"
-        time.sleep(0.02)
-    return duck.state()
-
-
-def test_move_expires_without_resend(duck):
+def test_move_expires_without_resend(duck, wait_sim_seconds):
     duck.call("robot.subscribe", {"hz": 20})
     duck.notify("robot.move", {"vx": 0.3})
     state = wait_sim_seconds(duck, duckd_sim.MOVE_EXPIRY + 0.3)
@@ -231,7 +189,7 @@ def camera_look_z(sim) -> float:
         return float(-R[2, 2])  # MuJoCo cameras look along their own -z
 
 
-def test_look_at_the_floor_turns_the_camera_down(duck, server):
+def test_look_at_the_floor_turns_the_camera_down(duck, server, wait_sim_seconds):
     duck.call("robot.subscribe", {"hz": 20})
     wait_sim_seconds(duck, 1.0)  # settle standing
     z_level = camera_look_z(server.sim)

@@ -27,3 +27,12 @@ original authors.
    Source: https://github.com/pollen-robotics/microduck_rl
    Path:   scripts/infer_policy.py
    Commit: bfc0ed49082ae1ab08385ab3d8a80e6e2290428b (2026-08-19)
+
+4. exercises/fetch_ball/python_template/Frequency.py
+   Source: https://github.com/JdeRobot/RoboticsAcademy
+   Path:   exercises/follow_line/python_template/Frequency.py
+   Commit: ff8b1bfd0682141a7795db26a0b4334b5044367b (2026-03-12)
+   Licence: GNU General Public License v3.0, NOT Apache 2.0. This one file
+   keeps its original licence; the rest of the repository is Apache 2.0.
+   Copied with only a module docstring added, so it matches the other
+   Academy exercise templates. To be revisited with JdeRobot.
