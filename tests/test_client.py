@@ -164,3 +164,59 @@ def test_concurrent_sends(listening_skt, duck):
         except json.JSONDecodeError:
             broken += 1
     assert broken == 0, f"{broken} of {len(lines)} lines were garbled"
+
+
+def test_handle_keeps_replies_and_latest_state(duck):
+    """_handle stores a reply under its id and keeps only the newest robot.state."""
+    duck._handle({"jsonrpc": "2.0", "id": 7, "result": {"accepted": True}})
+    duck._handle({"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 1.0}})
+    duck._handle({"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 2.0}})
+
+    assert duck.replies[7]["result"] == {"accepted": True}
+    assert duck.state() == {"t": 2.0}
+
+
+def test_handle_ignores_other_notifications(duck):
+    """Notifications other than robot.state change nothing."""
+    duck._handle({"jsonrpc": "2.0", "method": "something.else", "params": {"x": 1}})
+
+    assert duck.replies == {}
+    assert duck.state() is None
+
+
+def test_call_returns_the_reply_with_its_id(listening_skt, duck):
+    """call() wakes up when the reply for its id arrives and returns its result."""
+    server_end_skt, _ = listening_skt.accept()
+
+    # Play server in another thread: read the request, answer with the same id
+    def reply_to_request():
+        request = json.loads(server_end_skt.makefile("r", encoding="utf-8").readline())
+        send(
+            server_end_skt,
+            {"jsonrpc": "2.0", "id": request["id"], "result": {"api_version": 16}},
+        )
+
+    threading.Thread(target=reply_to_request).start()
+
+    assert duck.call("hello", {"api_version": 16}, timeout=2.0) == {"api_version": 16}
+    server_end_skt.close()
+
+
+def test_call_times_out_when_no_reply(listening_skt, duck):
+    """With the server connected but silent, call() raises TimeoutError, not ConnectionError."""
+    server_end_skt, _ = listening_skt.accept()
+
+    with pytest.raises(TimeoutError, match="no reply to hello"):
+        duck.call("hello", timeout=0.2)
+    server_end_skt.close()
+
+
+def test_wait_for_state_fails_fast_when_server_dies(listening_skt, duck):
+    """If the server goes away before any robot.state, wait_for_state raises at once."""
+    server_end_skt, _ = listening_skt.accept()
+    server_end_skt.close()
+
+    start = time.monotonic()
+    with pytest.raises(ConnectionError, match="lost connection"):
+        duck.wait_for_state(timeout=5.0)
+    assert time.monotonic() - start < 1.0, "should not wait out the timeout"

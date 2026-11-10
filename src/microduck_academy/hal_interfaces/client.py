@@ -9,11 +9,11 @@ import json
 import os
 import socket
 import threading
-import time
 
 API_VERSION = 16  # duck-ipc-proto lib.rs line 164, commit 590b986
 
 DEFAULT_SOCKET = "/tmp/duckd.sock"
+LOST_CONNECTION = "lost connection to the duck server"
 
 
 class DuckClient:
@@ -42,9 +42,9 @@ class DuckClient:
         self.last_state: dict | None = None
         self._connected = True
 
-        # set up locks
-        self.lock = threading.Lock()  # for next_id, replies and last_state
-        self._send_lock = threading.Lock()  # to _send
+        # guards next_id, replies, last_state and _connected; also wakes waiting callers
+        self.lock = threading.Condition()
+        self._send_lock = threading.Lock()
 
         threading.Thread(target=self._read_loop, daemon=True).start()
 
@@ -56,8 +56,8 @@ class DuckClient:
                 self.sock.sendall(line)
             except OSError:
                 # report any send failure as ConnectionError, so students see one error type
-                self._connected = False
-                raise ConnectionError("lost connection to the duck server") from None
+                self._mark_disconnected()
+                raise ConnectionError(LOST_CONNECTION) from None
 
     def notify(self, method: str, params: dict | None = None) -> None:
         msg = {"jsonrpc": "2.0", "method": method}
@@ -79,35 +79,52 @@ class DuckClient:
             msg["params"] = params
         self._send(msg)
 
-        # retrieve reply with timeout
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            with self.lock:
-                if (reply := self.replies.pop(msg_id, None)) is not None:
-                    if "error" in reply:
-                        raise RuntimeError(f"{method}: {reply['error']}")
-                    return reply.get("result")
-                self._check_connected()  # fail fast if connection is down
-            time.sleep(0.005)
-        raise TimeoutError(f"no reply to {method} (id {msg_id}) within {timeout}s")
+        def reply_or_disconnected():
+            return msg_id in self.replies or not self._connected
 
-    # Replies are matched by id; notifications have no id.
+        with self.lock:
+            self.lock.wait_for(reply_or_disconnected, timeout)
+            reply = self.replies.pop(msg_id, None)
+            if reply is None:
+                self._check_connected()
+                raise TimeoutError(
+                    f"no reply to {method} (id {msg_id}) within {timeout}s"
+                )
+        if "error" in reply:
+            raise RuntimeError(f"{method}: {reply['error']}")
+        return reply.get("result")
+
     def _read_loop(self) -> None:
+        """Reader thread: hand every incoming line to _handle until the connection ends."""
         try:
             for line in self.reader:
-                msg = json.loads(line)
-                if "id" in msg:
-                    with self.lock:
-                        self.replies[msg["id"]] = msg
-                # if notification is about robot.state: update state
-                elif msg.get("method") == "robot.state":
-                    with self.lock:
-                        self.last_state = msg["params"]
+                self._handle(json.loads(line))
         except OSError:
             # silence OSErrors (state() and call() already report the lost connection)
             pass
         finally:
+            self._mark_disconnected()
+
+    def _handle(self, msg: dict) -> None:
+        """Keep a reply under its id, or the latest robot.state; ignore other notifications.
+
+        Replies are matched by id; notifications have no id. To react to
+        another notification, add a branch here.
+        """
+        with self.lock:
+            if "id" in msg:
+                self.replies[msg["id"]] = msg
+            elif msg.get("method") == "robot.state":
+                self.last_state = msg["params"]
+            self.lock.notify_all()
+
+    def _mark_disconnected(self) -> None:
+        with self.lock:
             self._connected = False
+            self.lock.notify_all()
+
+    def _state_or_disconnected(self) -> bool:
+        return self.last_state is not None or not self._connected
 
     def _check_connected(self) -> None:
         """Raises ConnectionError if the reader thread has stopped.
@@ -115,7 +132,7 @@ class DuckClient:
         Call while holding self.lock
         """
         if not self._connected:
-            raise ConnectionError("lost connection to the duck server")
+            raise ConnectionError(LOST_CONNECTION)
 
     def state(self) -> dict | None:
         with self.lock:
@@ -127,12 +144,11 @@ class DuckClient:
 
         Subscribe first.
         """
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if (state := self.state()) is not None:
-                return state
-            time.sleep(0.005)
-
+        with self.lock:
+            self.lock.wait_for(self._state_or_disconnected, timeout)
+            self._check_connected()
+            if self.last_state is not None:
+                return self.last_state
         raise TimeoutError(
             f"no state received within {timeout}s; did you call robot.subscribe?"
         )
