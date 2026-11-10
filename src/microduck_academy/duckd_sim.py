@@ -2,7 +2,7 @@
 
     uv run python -m microduck_academy.duckd_sim                 # headless, /tmp/duckd.sock, real time
     uv run python -m microduck_academy.duckd_sim --viewer        # plus a MuJoCo window (macOS: mjpython)
-    uv run python examples/client.py                             # in another terminal
+    uv run python examples/demo.py                               # in another terminal
 
 The simulation is the smoke test's loop (load_model, build_policy, control_tick,
 step_physics) run at 50 Hz in a thread, wrapped in a lock. Socket handling is
@@ -58,8 +58,8 @@ from typing import Any, Callable
 
 import mujoco
 
-from . import smoke
-from .rpc import INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND, JsonRpcServer, RpcError
+from microduck_academy import smoke
+from microduck_academy.rpc import INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND, JsonRpcServer, RpcError
 
 log = logging.getLogger("duckd")
 
