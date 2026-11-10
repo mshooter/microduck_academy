@@ -43,8 +43,8 @@ class DuckClient:
         self._connected = True
 
         # set up locks
-        self.lock = threading.Lock() # for next_id, replies and last_state
-        self._send_lock = threading.Lock() # to _send
+        self.lock = threading.Lock()  # for next_id, replies and last_state
+        self._send_lock = threading.Lock()  # to _send
 
         threading.Thread(target=self._read_loop, daemon=True).start()
 
@@ -87,7 +87,7 @@ class DuckClient:
                     if "error" in reply:
                         raise RuntimeError(f"{method}: {reply['error']}")
                     return reply.get("result")
-                self._check_connected() # fail fast if connection is down
+                self._check_connected()  # fail fast if connection is down
             time.sleep(0.005)
         raise TimeoutError(f"no reply to {method} (id {msg_id}) within {timeout}s")
 
@@ -105,18 +105,17 @@ class DuckClient:
                         self.last_state = msg["params"]
         except OSError:
             # silence OSErrors (state() and call() already report the lost connection)
-            pass  
-        finally: 
+            pass
+        finally:
             self._connected = False
-
 
     def _check_connected(self) -> None:
         """Raises ConnectionError if the reader thread has stopped.
-        
+
         Call while holding self.lock
         """
         if not self._connected:
-            raise ConnectionError("lost connection to the duck server") 
+            raise ConnectionError("lost connection to the duck server")
 
     def state(self) -> dict | None:
         with self.lock:

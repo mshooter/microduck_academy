@@ -20,8 +20,16 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "black==26.5.1",
+    "prek>=0.5.10",
     "pytest>=9.1.1",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.black]
+target-version = ["py312"]
+# Pollen's files must not be touched. force-exclude (not extend-exclude) so they are skipped
+# even when passed by name, as pre-commit does.
+force-exclude = "src/microduck_academy/vendor"

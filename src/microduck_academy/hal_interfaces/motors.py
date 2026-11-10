@@ -16,7 +16,7 @@ class MotorsDuck:
         # connected client
         self._duck = client
 
-        # sendV and sendW only write target speeds into _cmd 
+        # sendV and sendW only write target speeds into _cmd
         self._cmd = {"vx": 0.0, "vy": 0.0, "vyaw": 0.0}
         self._cmd_lock = threading.Lock()
 
@@ -61,7 +61,7 @@ class MotorsDuck:
     def stop(self) -> None:
         with self._cmd_lock:
             self._cmd.update(vx=0.0, vy=0.0, vyaw=0.0)
-        self._duck.call("robot.stop") # waits for reply, so outside lock block
+        self._duck.call("robot.stop")  # waits for reply, so outside lock block
 
     def close(self) -> None:
         "Stops the move loop. The duck will keep the last command until the server expires it."

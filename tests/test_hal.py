@@ -27,7 +27,7 @@ def hal(server):
     HAL.py is imported from its own folder and connects to the test server.
     """
     with pytest.MonkeyPatch.context() as mp:
-        # monkeypatch env var, so that the DuckClient created by HAL.py 
+        # monkeypatch env var, so that the DuckClient created by HAL.py
         # connects to the test server
         mp.setenv("DUCK_SOCKET", server.path)
 
@@ -42,7 +42,7 @@ def hal(server):
     module.motors.close()
     module.duck.close()
     # don't leave this HAL cached for later imports
-    sys.modules.pop("HAL", None)  
+    sys.modules.pop("HAL", None)
 
 
 @pytest.fixture

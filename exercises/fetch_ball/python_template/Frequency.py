@@ -10,6 +10,7 @@ docstrings added. Kept identical so it behaves like every other Academy exercise
 Licence: GNU GPL v3.0, as stated in the Robotics Academy repository. Unlike the rest of this
 repository (Apache 2.0), this file is under the GPL. See NOTICE.
 """
+
 import time
 from datetime import datetime
 

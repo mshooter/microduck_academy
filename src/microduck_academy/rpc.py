@@ -11,6 +11,7 @@ is a notification and never gets a reply, not even an error. One method (the
 stream of `stream_notification` messages carrying handler.state() at the
 requested `hz`; calling it again on the same connection changes the rate.
 """
+
 from __future__ import annotations
 
 import json
@@ -47,7 +48,7 @@ class Connection:
     def __init__(self, sock: socket.socket):
         self.sock = sock
         self.send_lock = threading.Lock()
-        self.stream_hz: float | None = None      # None until the client subscribes
+        self.stream_hz: float | None = None  # None until the client subscribes
         self.open = True
 
     def send(self, obj: dict) -> bool:
@@ -62,14 +63,26 @@ class Connection:
         self.send({"jsonrpc": "2.0", "id": msg_id, "result": result})
 
     def error(self, msg_id: Any, code: int, message: str) -> None:
-        self.send({"jsonrpc": "2.0", "id": msg_id, "error": {"code": code, "message": message}})
+        self.send(
+            {
+                "jsonrpc": "2.0",
+                "id": msg_id,
+                "error": {"code": code, "message": message},
+            }
+        )
 
 
 class JsonRpcServer:
     """Listen on a Unix socket and serve `handler`. Use as a context manager or start()/close()."""
 
-    def __init__(self, path: str, handler: Any, default_hz: float = 50.0,
-                 stream_method: str = "robot.subscribe", stream_notification: str = "robot.state"):
+    def __init__(
+        self,
+        path: str,
+        handler: Any,
+        default_hz: float = 50.0,
+        stream_method: str = "robot.subscribe",
+        stream_notification: str = "robot.state",
+    ):
         self.path = path
         self.handler = handler
         self.default_hz = default_hz
@@ -85,7 +98,7 @@ class JsonRpcServer:
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.bind(self.path)
         self.sock.listen()
-        self.sock.settimeout(0.2)                # so the accept loop notices close()
+        self.sock.settimeout(0.2)  # so the accept loop notices close()
         self._spawn(self._accept_loop)
         log.info("listening on %s", self.path)
         return self
@@ -128,7 +141,7 @@ class JsonRpcServer:
                         return
                     self._dispatch(conn, raw)
         finally:
-            conn.open = False                    # stops the stream thread
+            conn.open = False  # stops the stream thread
 
     def _dispatch(self, conn: Connection, raw: str) -> None:
         try:
@@ -140,10 +153,12 @@ class JsonRpcServer:
         try:
             result = self.handler.handle(method, params)
         except RpcError as e:
-            if msg_id is not None:               # notifications never get a reply, not even an error
+            if msg_id is not None:  # notifications never get a reply, not even an error
                 conn.error(msg_id, e.code, str(e))
             return
-        except Exception as e:                   # a bug in the handler must not kill the connection silently
+        except (
+            Exception
+        ) as e:  # a bug in the handler must not kill the connection silently
             log.exception("handler failed on %s", method)
             if msg_id is not None:
                 conn.error(msg_id, INTERNAL_ERROR, f"{type(e).__name__}: {e}")
@@ -162,6 +177,12 @@ class JsonRpcServer:
 
     def _stream(self, conn: Connection) -> None:
         while conn.open and not self._stop.is_set():
-            if not conn.send({"jsonrpc": "2.0", "method": self.stream_notification, "params": self.handler.state()}):
+            if not conn.send(
+                {
+                    "jsonrpc": "2.0",
+                    "method": self.stream_notification,
+                    "params": self.handler.state(),
+                }
+            ):
                 return
             time.sleep(1.0 / conn.stream_hz)

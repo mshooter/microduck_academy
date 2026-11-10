@@ -9,7 +9,7 @@ below only sets the target speed once. For the raw JSON messages, see
 docs/api.md.
 
 Start duckd_sim.py first, then:
-    uv run python examples/demo.py 
+    uv run python examples/demo.py
 
 To run for a specific socket, vx or length of time:
     uv run python examples/demo.py --socket /tmp/duckd.sock --vx 0.3 --seconds 5
@@ -49,7 +49,9 @@ def main() -> None:
     t_end = time.monotonic() + args.seconds
     while time.monotonic() < t_end:
         pose = odometry.getPose3d()
-        print(f"t={pose.timeStamp:.2f} x={pose.x:.2f} y={pose.y:.2f} yaw={pose.yaw:.2f}")
+        print(
+            f"t={pose.timeStamp:.2f} x={pose.x:.2f} y={pose.y:.2f} yaw={pose.yaw:.2f}"
+        )
         time.sleep(0.1)
 
     # stop and close motors
