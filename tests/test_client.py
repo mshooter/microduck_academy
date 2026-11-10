@@ -164,3 +164,21 @@ def test_concurrent_sends(listening_skt, duck):
         except json.JSONDecodeError:
             broken += 1
     assert broken == 0, f"{broken} of {len(lines)} lines were garbled"
+
+
+def test_handle_keeps_replies_and_latest_state(duck):
+    """_handle stores a reply under its id and keeps only the newest robot.state."""
+    duck._handle({"jsonrpc": "2.0", "id": 7, "result": {"accepted": True}})
+    duck._handle({"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 1.0}})
+    duck._handle({"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 2.0}})
+
+    assert duck.replies[7]["result"] == {"accepted": True}
+    assert duck.state() == {"t": 2.0}
+
+
+def test_handle_ignores_other_notifications(duck):
+    """Notifications other than robot.state change nothing."""
+    duck._handle({"jsonrpc": "2.0", "method": "something.else", "params": {"x": 1}})
+
+    assert duck.replies == {}
+    assert duck.state() is None

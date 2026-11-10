@@ -91,23 +91,28 @@ class DuckClient:
             time.sleep(0.005)
         raise TimeoutError(f"no reply to {method} (id {msg_id}) within {timeout}s")
 
-    # Replies are matched by id; notifications have no id.
     def _read_loop(self) -> None:
+        """Reader thread: hand every incoming line to _handle until the connection ends."""
         try:
             for line in self.reader:
-                msg = json.loads(line)
-                if "id" in msg:
-                    with self.lock:
-                        self.replies[msg["id"]] = msg
-                # if notification is about robot.state: update state
-                elif msg.get("method") == "robot.state":
-                    with self.lock:
-                        self.last_state = msg["params"]
+                self._handle(json.loads(line))
         except OSError:
             # silence OSErrors (state() and call() already report the lost connection)
             pass
         finally:
             self._connected = False
+
+    def _handle(self, msg: dict) -> None:
+        """Keep a reply under its id, or the latest robot.state; ignore other notifications.
+
+        Replies are matched by id; notifications have no id. To react to
+        another notification, add a branch here.
+        """
+        with self.lock:
+            if "id" in msg:
+                self.replies[msg["id"]] = msg
+            elif msg.get("method") == "robot.state":
+                self.last_state = msg["params"]
 
     def _check_connected(self) -> None:
         """Raises ConnectionError if the reader thread has stopped.
