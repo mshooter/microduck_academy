@@ -52,7 +52,13 @@ class DuckClient:
         """Send one message as a single JSON line."""
         line = (json.dumps(msg) + "\n").encode("utf-8")
         with self._send_lock:
-            self.sock.sendall(line)
+            try:
+                self.sock.sendall(line)
+            except OSError:
+                # report any send failure (e.g. BrokenPipeError) 
+                # as ConnectionError, so students see one error type
+                self._connected = False
+                raise ConnectionError("lost connection to the duck server") from None
 
     def notify(self, method: str, params: dict | None = None) -> None:
         msg = {"jsonrpc": "2.0", "method": method}
@@ -100,6 +106,10 @@ class DuckClient:
                     with self.lock:
                         # replace previous state with new one
                         self.last_state = msg["params"]
+        except OSError:
+            # we silence other OSErrors because state() and call() already report 
+            # clearly the lost connection
+            pass  
         finally: 
             self._connected = False
 
