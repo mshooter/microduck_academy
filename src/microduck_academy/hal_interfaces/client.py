@@ -9,7 +9,6 @@ import json
 import os
 import socket
 import threading
-import time
 
 API_VERSION = 16  # duck-ipc-proto lib.rs line 164, commit 590b986
 
@@ -124,6 +123,9 @@ class DuckClient:
             self._connected = False
             self.lock.notify_all()
 
+    def _state_or_disconnected(self) -> bool:
+        return self.last_state is not None or not self._connected
+
     def _check_connected(self) -> None:
         """Raises ConnectionError if the reader thread has stopped.
 
@@ -142,12 +144,11 @@ class DuckClient:
 
         Subscribe first.
         """
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if (state := self.state()) is not None:
-                return state
-            time.sleep(0.005)
-
+        with self.lock:
+            self.lock.wait_for(self._state_or_disconnected, timeout)
+            self._check_connected()
+            if self.last_state is not None:
+                return self.last_state
         raise TimeoutError(
             f"no state received within {timeout}s; did you call robot.subscribe?"
         )

@@ -209,3 +209,14 @@ def test_call_times_out_when_no_reply(listening_skt, duck):
     with pytest.raises(TimeoutError, match="no reply to hello"):
         duck.call("hello", timeout=0.2)
     server_end_skt.close()
+
+
+def test_wait_for_state_fails_fast_when_server_dies(listening_skt, duck):
+    """If the server goes away before any robot.state, wait_for_state raises at once."""
+    server_end_skt, _ = listening_skt.accept()
+    server_end_skt.close()
+
+    start = time.monotonic()
+    with pytest.raises(ConnectionError, match="lost connection"):
+        duck.wait_for_state(timeout=5.0)
+    assert time.monotonic() - start < 1.0, "should not wait out the timeout"
