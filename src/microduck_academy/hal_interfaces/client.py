@@ -14,6 +14,7 @@ import time
 API_VERSION = 16  # duck-ipc-proto lib.rs line 164, commit 590b986
 
 DEFAULT_SOCKET = "/tmp/duckd.sock"
+LOST_CONNECTION = "lost connection to the duck server"
 
 
 class DuckClient:
@@ -42,9 +43,8 @@ class DuckClient:
         self.last_state: dict | None = None
         self._connected = True
 
-        # set up locks
-        self.lock = threading.Lock()  # for next_id, replies and last_state
-        self._send_lock = threading.Lock()  # to _send
+        self.lock = threading.Lock()  # for next_id, replies, last_state and _connected
+        self._send_lock = threading.Lock()
 
         threading.Thread(target=self._read_loop, daemon=True).start()
 
@@ -57,7 +57,7 @@ class DuckClient:
             except OSError:
                 # report any send failure as ConnectionError, so students see one error type
                 self._connected = False
-                raise ConnectionError("lost connection to the duck server") from None
+                raise ConnectionError(LOST_CONNECTION) from None
 
     def notify(self, method: str, params: dict | None = None) -> None:
         msg = {"jsonrpc": "2.0", "method": method}
@@ -120,7 +120,7 @@ class DuckClient:
         Call while holding self.lock
         """
         if not self._connected:
-            raise ConnectionError("lost connection to the duck server")
+            raise ConnectionError(LOST_CONNECTION)
 
     def state(self) -> dict | None:
         with self.lock:
