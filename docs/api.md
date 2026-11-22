@@ -347,7 +347,11 @@ the floor is not visible closer than about 0.5 m ahead.
 
 ### sim.reset
 
-Put the duck back at the origin, standing, facing `+x`.
+Put the duck back at the origin, standing, facing `+x`. A skill that is
+running is cancelled, and the head goes back to its default pose (any
+`robot.head` or `robot.look` offset is cleared). The last `robot.move` is
+also forgotten: `move.requested` goes back to zero, so the duck stands
+until a new `robot.move` arrives.
 
 | field | type | meaning |
 |---|---|---|
