@@ -292,7 +292,7 @@ not measured):
 | `move.applied` | `[vx, vy, vyaw]` | what the policy was given after safety clamps |
 | `move.limited_by` | list of strings | why they differ; absent when they do not |
 | `head` | 4 numbers | head joint angles, radians (order: see section 5) |
-| `policy` | string | which network drove this tick: `walk`, `stand`, or `held` when none |
+| `policy` | string | which network drove this tick: `walk`, `stand`, `sit`, a skill name while one runs, or `held` when none (full list: see section 5) |
 | **`safety.fallen`** | bool | the robot is down. **Nested under `safety`, not top level** |
 | `safety.limp` | bool | gains dropped so the robot yields |
 | `safety.gravity` | 3 numbers | projected gravity in the trunk frame; upright is about `[0, 0, -1]` |
@@ -412,8 +412,9 @@ Settled when the real daemon's source is read or the real robot is measured.
   simulator accepts it and does not require it.
 - `state.head` is `neck_pitch, head_pitch, head_yaw, head_roll`, the
   simulator's actuator order. Not checked against the real robot.
-- `state.policy` on the simulator is `walk`, `stand`, `sit`, or the skill
-  name (`ground_pick`, `kick_left`, `kick_right`, `roulade`) while one runs.
+- `state.policy` on the simulator is `walk`, `stand`, `sit`, `held` while
+  the policy is off, or the skill name (`ground_pick`, `kick_left`,
+  `kick_right`, `roulade`) while one runs.
   The real robot's strings while a skill runs are not known.
 - `state.joints` and `state.targets` have 14 entries on the simulator: the
   model has no mouth servo. The real robot has 15, `mouth` at index 9.
