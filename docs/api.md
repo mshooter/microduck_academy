@@ -369,10 +369,18 @@ search for the ball.
 
 Place the ball at `x, y` on the floor, world frame, metres.
 
+| field | type | meaning |
+|---|---|---|
+| `x` | number, optional | default `0.3` |
+| `y` | number, optional | default `0.0` |
+
 ```text
 → {"jsonrpc":"2.0","id":8,"method":"sim.spawnBall","params":{"x":0.5,"y":0.0}}
 ← {"jsonrpc":"2.0","id":8,"result":{"accepted":true}}
 ```
+
+In a scene with no ball, the call is refused rather than failing with an
+error: `{"accepted":false,"reason":"no ball in this scene"}`.
 
 ### sim.setJointTargets
 
