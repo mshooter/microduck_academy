@@ -40,42 +40,56 @@ joystick. Below about 0.25 m/s the duck does not move.
 → {"jsonrpc":"2.0","method":"robot.move","params":{"vx":0.3,"vy":0.0,"vyaw":0.0}}
 ```
 
+To halt at once instead of waiting for the last move to expire, send
+`robot.stop`:
+
+```text
+→ {"jsonrpc":"2.0","id":3,"method":"robot.stop"}
+← {"jsonrpc":"2.0","id":3,"result":{"accepted":true}}
+```
+
 **4. Look at the floor.** With the head level the camera cannot see closer
 than about half a metre ahead.
 
 ```text
-→ {"jsonrpc":"2.0","id":3,"method":"robot.look","params":{"x":0.3,"y":0.0,"z":-0.12}}
-← {"jsonrpc":"2.0","id":3,"result":{"head":{...},"clamped":false}}
+→ {"jsonrpc":"2.0","id":4,"method":"robot.look","params":{"x":0.3,"y":0.0,"z":-0.12}}
+← {"jsonrpc":"2.0","id":4,"result":{"head":{...},"clamped":false}}
 ```
 
 **5. Get a camera image.** A JPEG, 640 by 360, base64 in the reply.
 
 ```text
-→ {"jsonrpc":"2.0","id":4,"method":"sim.frame"}
-← {"jsonrpc":"2.0","id":4,"result":{"width":640,"height":360,"format":"jpeg","data":"<base64>"}}
+→ {"jsonrpc":"2.0","id":5,"method":"sim.frame"}
+← {"jsonrpc":"2.0","id":5,"result":{"width":640,"height":360,"format":"jpeg","data":"<base64>"}}
 ```
 
-In Python, using the client in `hal_interfaces/client.py`:
+The same five steps in Python, using the client in `hal_interfaces/client.py`:
 
 ```python
-import time
-from microduck_academy.hal_interfaces.client import DuckClient
+import base64, io, time
+from PIL import Image
+from microduck_academy.hal_interfaces.client import API_VERSION, DuckClient
 
 duck = DuckClient("/tmp/duckd.sock")
-duck.call("hello", {"api_version": 16})
-duck.call("robot.subscribe", {"hz": 10})
+duck.call("hello", {"api_version": API_VERSION})            # 1. hello
+duck.call("robot.subscribe", {"hz": 10})                    # 2. state updates
 
-for _ in range(100):                                   # 5 seconds at 20 Hz
+for _ in range(100):                                        # 3. walk: 5 s, resent at 20 Hz
     duck.notify("robot.move", {"vx": 0.3, "vy": 0.0, "vyaw": 0.0})
-    state = duck.state()
-    if state and state["safety"]["fallen"]:            # note: nested under "safety"
+    state = duck.state()                                    # None until the first robot.state
+    if state and state["safety"]["fallen"]:                 # nested under "safety"
         break
     time.sleep(0.05)
-
 duck.call("robot.stop")
+
+duck.call("robot.look", {"x": 0.3, "y": 0.0, "z": -0.12})  # 4. look at the floor
+frame = duck.call("sim.frame")                              # 5. camera image
+image = Image.open(io.BytesIO(base64.b64decode(frame["data"])))  # 640 x 360, RGB
 ```
 
-That is the whole loop. The rest of this document is the reference.
+That is the raw protocol. In a HAL, `MotorsDuck` resends `robot.move` for
+you, and `OdometryDuck` and `CameraDuck` wrap steps 2 and 5; see section 6.
+The rest of this document is the reference.
 
 ## 1. How messages work
 
