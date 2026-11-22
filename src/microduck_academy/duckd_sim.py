@@ -91,16 +91,6 @@ POLICY_NAMES = {
     "standing": "stand",
     "sit": "sit",
 }  # Pollen's names -> the protocol's
-# PolicyInference's argument names -> SubscribeResult's keys (duck-ipc-proto lib.rs 1775 to 1800)
-SUBSCRIBE_KEYS = {
-    "walking_onnx_path": "walk",
-    "standing_onnx_path": "stand",
-    "sitstand_onnx_path": "sitstand",
-    "ground_pick_onnx_path": "ground_pick",
-    "kick_left_onnx_path": "kick_left",
-    "kick_right_onnx_path": "kick_right",
-    "roulade_onnx_path": "roulade",
-}
 
 Params = dict[str, Any]
 
@@ -380,9 +370,7 @@ class DuckSim:
 
     def _subscribe(self, params: Any) -> Params:
         _params(params, {"hz"})  # the stream itself is started by rpc.py
-        loaded = {
-            SUBSCRIBE_KEYS[role]: name for role, name in smoke.POLICY_ROLES.items()
-        }
+        loaded = {key: file for file, key in smoke.POLICY_ROLES.values()}
         return {"accepted": True, **loaded}
 
     def _frame(self, params: Any) -> Params:

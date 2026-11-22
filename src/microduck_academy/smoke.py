@@ -48,14 +48,16 @@ FRAME_W, FRAME_H = (
 # expressing (right=-y, up=+z, look=+x) in the world and converting with the body's rotation.
 CAMERA_QUAT_FORWARD = (0.7071068, 0.0, 0.0, -0.7071068)
 
+# PolicyInference's argument -> (file in assets/policies, key in the robot.subscribe reply).
+# The keys are the real robot's SubscribeResult fields (duck-ipc-proto lib.rs 1775 to 1800).
 POLICY_ROLES = {
-    "walking_onnx_path": "alpha_walking.onnx",
-    "standing_onnx_path": "alpha_stand.onnx",
-    "sitstand_onnx_path": "alpha_sitstand.onnx",
-    "ground_pick_onnx_path": "alpha_ground_pick.onnx",
-    "kick_left_onnx_path": "ball_kick_left.onnx",
-    "kick_right_onnx_path": "ball_kick_right.onnx",
-    "roulade_onnx_path": "roulade.onnx",
+    "walking_onnx_path": ("alpha_walking.onnx", "walk"),
+    "standing_onnx_path": ("alpha_stand.onnx", "stand"),
+    "sitstand_onnx_path": ("alpha_sitstand.onnx", "sitstand"),
+    "ground_pick_onnx_path": ("alpha_ground_pick.onnx", "ground_pick"),
+    "kick_left_onnx_path": ("ball_kick_left.onnx", "kick_left"),
+    "kick_right_onnx_path": ("ball_kick_right.onnx", "kick_right"),
+    "roulade_onnx_path": ("roulade.onnx", "roulade"),
 }
 
 
@@ -73,7 +75,7 @@ def load_model() -> mujoco.MjModel:
 
 def build_policy(model, data) -> PolicyInference:
     """Pollen's loop around the policies, with all shipped roles loaded."""
-    paths = {role: str(POLICIES / name) for role, name in POLICY_ROLES.items()}
+    paths = {role: str(POLICIES / file) for role, (file, _) in POLICY_ROLES.items()}
     return PolicyInference(
         model, data, new_cmd_obs=True, use_projected_gravity=True, **paths
     )
