@@ -125,7 +125,9 @@ enable a policy on a fallen robot. Check `accepted`; do not only check for
 
 **Errors** replace `result` with `error: {"code", "message", "data"?}`.
 The codes are the JSON-RPC standard ones: `-32601` unknown method,
-`-32602` bad parameters (a misspelt skill name, for example).
+`-32602` bad parameters (a misspelt skill name, for example), `-32603`
+internal error (on the simulator, `sim.frame` when there is no OpenGL
+context to render with).
 
 **Handshake.** Send `hello` with `api_version: 16` once after connecting.
 The reply's `daemon_version` and `revision` are `null` on the simulator
@@ -194,7 +196,9 @@ joints. Discrete.
 The reply's `head` is what was sent to the joints; resend it as
 `robot.head` to hold the gaze. `clamped: true` means the point is beyond
 the head's reach and the joints are the closest gaze, not a lock. The
-numbers in the example are illustrative.
+numbers in the example are illustrative. A point straight above or below
+the trunk origin (`x` and `y` both 0) has no direction to look in and is
+refused with error `-32602`.
 
 Why a student needs this: with the head level the camera does not see the
 floor closer than about 0.5 m, so a ball at the duck's feet is visible only
@@ -294,7 +298,7 @@ not measured):
 | `safety.gain` | integer or absent | servo P gain actually running |
 | `loop.hz` | number | achieved control rate over the last window |
 | `loop.missed` | integer | ticks that overran, cumulative |
-| `joints` | 15 numbers | measured joint angles, radians, in `JOINT_NAMES` order |
+| `joints` | 15 numbers (14 on the simulator, see section 5) | measured joint angles, radians, in `JOINT_NAMES` order |
 | `targets` | 15 numbers | commanded joint angles, same order, so a viewer can show tracking error |
 | `odom.position` | `[x, y, z]` | trunk position, metres, in the frame the robot woke up in; `z` is height above ground |
 | `odom.yaw` | number | heading, radians |
