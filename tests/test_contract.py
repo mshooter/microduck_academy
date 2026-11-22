@@ -29,6 +29,18 @@ STATE_KEYS = {
     "odom",
 }
 SAFETY_KEYS = {"fallen", "limp", "gravity"}
+# docs/api.md, section 2, robot.subscribe: Pollen's SubscribeResult (lib.rs 1775 to 1800).
+SUBSCRIBE_KEYS = {
+    "accepted",
+    "walk",
+    "stand",
+    "unavailable",
+    "sitstand",
+    "ground_pick",
+    "kick_left",
+    "kick_right",
+    "roulade",
+}
 
 
 @pytest.fixture
@@ -47,6 +59,15 @@ def test_hello_reply_has_documented_fields(duck):
     reply = duck.call("hello", {"api_version": 16})
     assert set(reply) == {"api_version", "daemon_version", "revision"}
     assert reply["api_version"] == 16
+
+
+def test_subscribe_reply_names_policies_with_the_real_robots_keys(duck):
+    reply = duck.call("robot.subscribe", {"hz": 10})
+    assert reply["accepted"] is True
+    assert set(reply) <= SUBSCRIBE_KEYS, f"unknown keys {set(reply) - SUBSCRIBE_KEYS}"
+    assert (
+        reply["walk"].endswith(".onnx") and "/" not in reply["walk"]
+    )  # a file name, not a path
 
 
 def test_state_frame_has_documented_keys_and_nested_fallen(duck):

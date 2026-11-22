@@ -258,8 +258,10 @@ Turn the connection into a stream of `robot.state` notifications. Discrete.
 
 The reply names the policy files loaded for the life of the process
 (`walk`, `stand`, and the skills as `sitstand`, `ground_pick`,
-`kick_left`, ...); a missing key means that skill is not available. File
-names shown are illustrative. One stream per connection: subscribing again
+`kick_left`, `kick_right`, `roulade`), as file names, not paths; a missing
+key means that skill is not available. On the real robot, `unavailable`
+says why no policy is driving when none is; the simulator always has its
+policies and never sends it. File names shown are illustrative. One stream per connection: subscribing again
 on the same connection changes its rate rather than starting a second
 stream.
 
