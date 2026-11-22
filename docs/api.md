@@ -6,8 +6,10 @@ and state field is copied from Pollen Robotics' real robot, so a client
 written against this server should later work on a physical Microduck.
 Anything prefixed `sim.` exists only in this simulator.
 
-Status: draft, 2026-09-26. The server is not written yet; section 5 lists
-what is still to be confirmed. The appendix says where every name comes from.
+Status: draft. The simulator server (`duckd_sim.py`) implements everything
+in sections 2 and 3, checked by `tests/test_contract.py`. Section 5 lists
+what is still to be confirmed against the real robot. The appendix says
+where every name comes from.
 
 ## Quick start
 
@@ -302,7 +304,7 @@ yaw = state["odom"]["yaw"]
 These do not exist on the real robot, which streams video through a
 different service and has no reset button. A HAL that uses them needs a
 different implementation of the same functions on hardware. All are
-discrete. Their shapes are ours and may change until the server lands.
+discrete. Their shapes are ours and may still change.
 
 ### sim.frame
 
