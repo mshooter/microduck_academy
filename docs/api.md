@@ -7,9 +7,8 @@ written against this server should later work on a physical Microduck.
 Anything prefixed `sim.` exists only in this simulator.
 
 Status: draft. The simulator server (`duckd_sim.py`) implements everything
-in sections 2 and 3, checked by `tests/test_contract.py`. Section 5 lists
-what is still to be confirmed against the real robot. The appendix says
-where every name comes from.
+in sections 2 and 3. Section 5 lists what is still to be confirmed against
+the real robot. The appendix says where every name comes from.
 
 ## Quick start
 
@@ -261,9 +260,9 @@ The reply names the policy files loaded for the life of the process
 `kick_left`, `kick_right`, `roulade`), as file names, not paths; a missing
 key means that skill is not available. On the real robot, `unavailable`
 says why no policy is driving when none is. The simulator always has its
-policies and never sends `unavailable`. File names shown are illustrative. One stream per connection: subscribing again
-on the same connection changes its rate rather than starting a second
-stream.
+policies and never sends `unavailable`. File names shown are illustrative.
+One stream per connection: subscribing again on the same connection
+changes its rate rather than starting a second stream.
 
 ### robot.state
 
