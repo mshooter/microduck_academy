@@ -185,16 +185,20 @@ def test_handle_ignores_other_notifications(duck):
 
 
 def test_call_returns_the_reply_with_its_id(listening_skt, duck):
-    """call() wakes up when the reply for its id arrives and returns its result."""
+    """call() returns the reply with its own id, not the first to arrive."""
     server_end_skt, _ = listening_skt.accept()
 
-    # Play server in another thread: read the request, answer with the same id
+    # Play server in another thread: answer another request's id first, then this one's
     def reply_to_request():
         request = json.loads(server_end_skt.makefile("r", encoding="utf-8").readline())
-        send(
-            server_end_skt,
-            {"jsonrpc": "2.0", "id": request["id"], "result": {"api_version": 16}},
-        )
+        other = {
+            "jsonrpc": "2.0",
+            "id": request["id"] + 1,
+            "result": {"api_version": 0},
+        }
+        mine = {"jsonrpc": "2.0", "id": request["id"], "result": {"api_version": 16}}
+        send(server_end_skt, other)
+        send(server_end_skt, mine)
 
     threading.Thread(target=reply_to_request).start()
 
