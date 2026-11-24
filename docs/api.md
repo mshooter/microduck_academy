@@ -7,8 +7,9 @@ written against this server should later work on a physical Microduck.
 Anything prefixed `sim.` exists only in this simulator.
 
 Status: draft. The simulator server (`duckd_sim.py`) implements everything
-in sections 2 and 3. Section 5 lists what is still to be confirmed against
-the real robot. The appendix says where every name comes from.
+in sections 2 and 3 except what is marked planned. Section 5 lists what is
+still to be confirmed against the real robot. The appendix says where every
+name comes from.
 
 ## Quick start
 
@@ -241,6 +242,30 @@ names the scripted move already holding the robot.
 `accepted: true` means the skill started, not that it finished. Watch
 `robot.state.policy` to see when the walker is back in charge.
 
+### robot.enable: switch the walking policy on or off
+
+> Planned: agreed, not implemented in the simulator yet.
+
+Switch the walking policy on or off. Switching it off returns the
+duck to its default pose and holds it there, nothing else moves the joints
+until `sim.setJointTargets` arrives. Switching it on hands control back to
+the policy.
+
+| field | type | meaning |
+|---|---|---|
+| `on` | bool | `true` runs the policy, `false` stops it |
+| `toggle` | bool, optional | flip the current state instead; `on` is then ignored. Default `false` |
+
+```text
+→ {"jsonrpc":"2.0","id":10,"method":"robot.enable","params":{"on":false}}
+← {"jsonrpc":"2.0","id":10,"result":{"accepted":true,"reason":"policy off"}}
+```
+
+If both are sent, `toggle` wins and `on` is ignored. The reply's
+`reason` names the state the duck ended in, `policy on` or `policy off`,
+which is how a client using `toggle` learns where it is.
+While the policy is off, `robot.state.policy` is `held`.
+
 ### robot.subscribe
 
 Turn the connection into a stream of `robot.state` notifications. Discrete.
@@ -292,7 +317,7 @@ not measured):
 | `move.applied` | `[vx, vy, vyaw]` | what the policy was given after safety clamps |
 | `move.limited_by` | list of strings | why they differ; absent when they do not |
 | `head` | 4 numbers | head joint angles, radians (order: see section 5) |
-| `policy` | string | which network drove this tick: `walk`, `stand`, or `held` when none |
+| `policy` | string | which network drove this tick: `walk`, `stand`, `sit`, a skill name while one runs, or `held` when none (full list: see section 5) |
 | **`safety.fallen`** | bool | the robot is down. **Nested under `safety`, not top level** |
 | `safety.limp` | bool | gains dropped so the robot yields |
 | `safety.gravity` | 3 numbers | projected gravity in the trunk frame; upright is about `[0, 0, -1]` |
@@ -347,28 +372,78 @@ the floor is not visible closer than about 0.5 m ahead.
 
 ### sim.reset
 
-Put the duck back at the origin, standing, and the ball at its start
-position.
+Put the duck back at the origin, standing, facing `+x`. A skill that is
+running is cancelled, and the head goes back to its default pose (any
+`robot.head` or `robot.look` offset is cleared). The last `robot.move` is
+also forgotten: `move.requested` goes back to zero, so the duck stands
+until a new `robot.move` arrives. If the policy was off, it is switched
+back on, so `state.policy` is `stand` again.
+
+| field | type | meaning |
+|---|---|---|
+| `seed` | integer, optional | planned, not implemented yet. Place the ball at a random spot from this seed: `x` from 0.5 to 1.5 m, `y` from -0.5 to 0.5 m, world frame. The same seed always gives the same spot. Without it, the ball goes back to its start position, 0.3 m ahead |
 
 ```text
-→ {"jsonrpc":"2.0","id":7,"method":"sim.reset"}
+→ {"jsonrpc":"2.0","id":7,"method":"sim.reset","params":{"seed":42}}
 ← {"jsonrpc":"2.0","id":7,"result":{"accepted":true}}
 ```
+
+A spot can be outside the camera's view at the start, so a fetch has to
+search for the ball.
 
 ### sim.spawnBall
 
 Place the ball at `x, y` on the floor, world frame, metres.
+
+| field | type | meaning |
+|---|---|---|
+| `x` | number, optional | default `0.3` |
+| `y` | number, optional | default `0.0` |
 
 ```text
 → {"jsonrpc":"2.0","id":8,"method":"sim.spawnBall","params":{"x":0.5,"y":0.0}}
 ← {"jsonrpc":"2.0","id":8,"result":{"accepted":true}}
 ```
 
+In a scene with no ball, the call is refused rather than failing with an
+error: `{"accepted":false,"reason":"no ball in this scene"}`.
+
+### sim.setJointTargets
+
+> Planned: agreed, not implemented in the simulator yet.
+
+For writing your own gait or balance controller; the fetch exercise does
+not use it. It is also the interface a Gazebo port drives: one position
+target per joint.
+
+Set servo targets directly, in radians, by joint name. Discrete: send it as
+a request, and the reply says whether the targets were applied. It only
+works while the policy is off (`robot.enable {"on": false}`).
+
+| field | type | meaning |
+|---|---|---|
+| `targets` | object | joint name to target angle, radians. Names as in `JOINT_NAMES` (section 2, `robot.state`); joints left out keep their current target |
+
+```text
+→ {"jsonrpc":"2.0","id":11,"method":"sim.setJointTargets","params":{"targets":{"neck_pitch":0.5,"head_yaw":0.3}}}
+← {"jsonrpc":"2.0","id":11,"result":{"accepted":true}}
+```
+
+Targets stay until changed: the duck holds the last pose it was sent. To
+go back to the default pose, send `robot.enable {"on": false}` again, or
+`sim.reset`. Targets are clipped to each joint's range, and the torque
+limit stays on.
+
+While the policy is on, the reply is
+`{"accepted":false,"reason":"policy is on"}`. An unknown joint name is
+error `-32602`; on the simulator that includes `mouth`, which has no servo
+here.
+
 ## 4. Real-robot methods not implemented here
 
 The real robot has more `robot.*` methods. The simulator answers them with
 error `-32601` (method not found), so a HAL notices instead of silently
-doing nothing: `robot.enable`, `robot.init`, `robot.relax`, `robot.pose`,
+doing nothing: `robot.init`, `robot.relax`, `robot.pose`,
 `robot.mouth`, `robot.sound`, `robot.theremin`, `robot.chorale`,
 `robot.shutdown`, `robot.mode`, `robot.setMode`, plus the `update.*`,
 `net.*`, `system.*`, `pad.*` and `config.*` namespaces. `robot.pose` (body
@@ -385,8 +460,9 @@ Settled when the real daemon's source is read or the real robot is measured.
   simulator accepts it and does not require it.
 - `state.head` is `neck_pitch, head_pitch, head_yaw, head_roll`, the
   simulator's actuator order. Not checked against the real robot.
-- `state.policy` on the simulator is `walk`, `stand`, `sit`, or the skill
-  name (`ground_pick`, `kick_left`, `kick_right`, `roulade`) while one runs.
+- `state.policy` on the simulator is `walk`, `stand`, `sit`, `held` while
+  the policy is off, or the skill name (`ground_pick`, `kick_left`,
+  `kick_right`, `roulade`) while one runs.
   The real robot's strings while a skill runs are not known.
 - `state.joints` and `state.targets` have 14 entries on the simulator: the
   model has no mouth servo. The real robot has 15, `mouth` at index 9.
@@ -401,6 +477,11 @@ Settled when the real daemon's source is read or the real robot is measured.
   has been measured.
 - The real camera's field of view; the simulator uses 45 degrees vertical.
 - `safety.gain` is not sent by the simulator (no servos to read it from).
+- `sim.setJointTargets` exists only in the simulator: the real robot does
+  not accept raw joint commands from clients.
+- With the policy off, the real robot's behaviour beyond returning to its
+  home pose is not known; the simulator holds the default pose until
+  `sim.setJointTargets` arrives, then the last targets it was sent.
 
 ## 6. Client and demo
 
@@ -444,6 +525,7 @@ commit. `sim.*` methods have no source; they are ours.
 | `robot.head`; `HeadParams` | 310; 1517 to 1522 |
 | `robot.look`; `LookParams`; `LookResult`; "never has to know which way head_yaw turns" | 313; 1531 to 1539; 1543 to 1549; 1526 |
 | `robot.stop` | 315 |
+| `robot.enable`; `EnableParams` (`on`, `toggle`); off returns to home pose, `reason` names the end state | 317; 1806 to 1825; 1819 to 1822 |
 | `robot.do`; refusal wording; `DoParams`; `Skill` names; `snake_case`; typo is invalid params | 352; 350 to 351; 1693; 1675 to 1687; 1674; 1671 |
 | `robot.subscribe`; `SubscribeParams`; `SubscribeResult` | 416; 1758 to 1761; 1775 to 1800 |
 | `robot.state`; struct | 425; 2560 to 2590 |
