@@ -222,7 +222,9 @@ names the scripted move already holding the robot.
 `accepted: true` means the skill started, not that it finished. Watch
 `robot.state.policy` to see when the walker is back in charge.
 
-### robot.enable
+### robot.enable: switch the walking policy on or off
+
+> Planned: agreed, not implemented in the simulator yet.
 
 Switch the walking policy on or off. Switching it off returns the
 duck to its default pose and holds it there, nothing else moves the joints
@@ -239,8 +241,9 @@ the policy.
 ← {"jsonrpc":"2.0","id":10,"result":{"accepted":true,"reason":"policy off"}}
 ```
 
-The reply's `reason` names the state the duck ended in, `policy on` or
-`policy off`, which is how a client using `toggle` learns where it is.
+If both are sent, `toggle` wins and `on` is ignored. The reply's
+`reason` names the state the duck ended in, `policy on` or `policy off`,
+which is how a client using `toggle` learns where it is.
 While the policy is off, `robot.state.policy` is `held`.
 
 ### robot.subscribe
@@ -351,11 +354,12 @@ Put the duck back at the origin, standing, facing `+x`. A skill that is
 running is cancelled, and the head goes back to its default pose (any
 `robot.head` or `robot.look` offset is cleared). The last `robot.move` is
 also forgotten: `move.requested` goes back to zero, so the duck stands
-until a new `robot.move` arrives.
+until a new `robot.move` arrives. If the policy was off, it is switched
+back on, so `state.policy` is `stand` again.
 
 | field | type | meaning |
 |---|---|---|
-| `seed` | integer, optional | place the ball at a random spot from this seed: `x` from 0.5 to 1.5 m, `y` from -0.5 to 0.5 m, world frame. The same seed always gives the same spot. Without it, the ball goes back to its start position, 0.3 m ahead |
+| `seed` | integer, optional | planned, not implemented yet. Place the ball at a random spot from this seed: `x` from 0.5 to 1.5 m, `y` from -0.5 to 0.5 m, world frame. The same seed always gives the same spot. Without it, the ball goes back to its start position, 0.3 m ahead |
 
 ```text
 → {"jsonrpc":"2.0","id":7,"method":"sim.reset","params":{"seed":42}}
@@ -384,24 +388,34 @@ error: `{"accepted":false,"reason":"no ball in this scene"}`.
 
 ### sim.setJointTargets
 
-Set the servo targets directly, in radians, one per joint in
-`robot.state.joints` order (14 on the simulator). Continuous: send it as a
-notification and keep sending it, like `robot.move`. It only takes effect
-while the policy is off (`robot.enable {"on": false}`).
+> Planned: agreed, not implemented in the simulator yet.
+
+For writing your own gait or balance controller; the fetch exercise does
+not use it. It is also the interface a Gazebo port drives: one position
+target per joint.
+
+Set servo targets directly, in radians, by joint name. Discrete: send it as
+a request, and the reply says whether the targets were applied. It only
+works while the policy is off (`robot.enable {"on": false}`).
 
 | field | type | meaning |
 |---|---|---|
-| `targets` | 14 numbers | target angle per joint, radians |
+| `targets` | object | joint name to target angle, radians. Names as in `JOINT_NAMES` (section 2, `robot.state`); joints left out keep their current target |
 
 ```text
-→ {"jsonrpc":"2.0","method":"sim.setJointTargets","params":{"targets":[0.0,-0.087,-0.458,-0.005,0.453,0.349,0.349,0.0,0.0,0.0,0.087,0.458,0.005,-0.453]}}
+→ {"jsonrpc":"2.0","id":11,"method":"sim.setJointTargets","params":{"targets":{"neck_pitch":0.5,"head_yaw":0.3}}}
+← {"jsonrpc":"2.0","id":11,"result":{"accepted":true}}
 ```
 
-The example is the default pose. Targets are clipped to each joint's
-range, and the torque limit stays on. If no `sim.setJointTargets` arrives
-for 0.5 s, the duck goes back to its default pose. A message with the
-wrong number of targets is ignored, like every notification, it gets no
-reply, not even an error.
+Targets stay until changed: the duck holds the last pose it was sent. To
+go back to the default pose, send `robot.enable {"on": false}` again, or
+`sim.reset`. Targets are clipped to each joint's range, and the torque
+limit stays on.
+
+While the policy is on, the reply is
+`{"accepted":false,"reason":"policy is on"}`. An unknown joint name is
+error `-32602`; on the simulator that includes `mouth`, which has no servo
+here.
 
 ## 4. Real-robot methods not implemented here
 
@@ -444,7 +458,8 @@ Settled when the real daemon's source is read or the real robot is measured.
 - `sim.setJointTargets` exists only in the simulator: the real robot does
   not accept raw joint commands from clients.
 - With the policy off, the real robot's behaviour beyond returning to its
-  home pose is not known; the simulator holds the default pose.
+  home pose is not known; the simulator holds the default pose until
+  `sim.setJointTargets` arrives, then the last targets it was sent.
 
 ## 6. Client and demo
 
