@@ -86,7 +86,7 @@ class DuckClient:
             self.lock.wait_for(reply_or_disconnected, timeout)
             reply = self.replies.pop(msg_id, None)
             if reply is None:
-                self._check_connected()
+                self._raise_if_disconnected()
                 raise TimeoutError(
                     f"no reply to {method} (id {msg_id}) within {timeout}s"
                 )
@@ -126,8 +126,8 @@ class DuckClient:
     def _state_or_disconnected(self) -> bool:
         return self.last_state is not None or not self._connected
 
-    def _check_connected(self) -> None:
-        """Raises ConnectionError if the reader thread has stopped.
+    def _raise_if_disconnected(self) -> None:
+        """Raises ConnectionError if the connection is gone.
 
         Call while holding self.lock
         """
@@ -136,7 +136,7 @@ class DuckClient:
 
     def state(self) -> dict | None:
         with self.lock:
-            self._check_connected()
+            self._raise_if_disconnected()
             return self.last_state
 
     def wait_for_state(self, timeout: float = 2.0) -> dict:
@@ -146,7 +146,7 @@ class DuckClient:
         """
         with self.lock:
             self.lock.wait_for(self._state_or_disconnected, timeout)
-            self._check_connected()
+            self._raise_if_disconnected()
             if self.last_state is not None:
                 return self.last_state
         raise TimeoutError(
