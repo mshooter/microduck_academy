@@ -370,7 +370,8 @@ class DuckSim:
 
     def _subscribe(self, params: Any) -> Params:
         _params(params, {"hz"})  # the stream itself is started by rpc.py
-        return {"accepted": True, **smoke.POLICY_ROLES}
+        loaded = {key: file for file, key in smoke.POLICY_ROLES.values()}
+        return {"accepted": True, **loaded}
 
     def _frame(self, params: Any) -> Params:
         _params(params, set())

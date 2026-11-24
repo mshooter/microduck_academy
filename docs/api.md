@@ -6,8 +6,9 @@ and state field is copied from Pollen Robotics' real robot, so a client
 written against this server should later work on a physical Microduck.
 Anything prefixed `sim.` exists only in this simulator.
 
-Status: draft, 2026-09-26. The server is not written yet; section 5 lists
-what is still to be confirmed. The appendix says where every name comes from.
+Status: draft. The simulator server (`duckd_sim.py`) implements everything
+in sections 2 and 3. Section 5 lists what is still to be confirmed against
+the real robot. The appendix says where every name comes from.
 
 ## Quick start
 
@@ -38,42 +39,56 @@ joystick. Below about 0.25 m/s the duck does not move.
 → {"jsonrpc":"2.0","method":"robot.move","params":{"vx":0.3,"vy":0.0,"vyaw":0.0}}
 ```
 
+To halt at once instead of waiting for the last move to expire, send
+`robot.stop`:
+
+```text
+→ {"jsonrpc":"2.0","id":3,"method":"robot.stop"}
+← {"jsonrpc":"2.0","id":3,"result":{"accepted":true}}
+```
+
 **4. Look at the floor.** With the head level the camera cannot see closer
 than about half a metre ahead.
 
 ```text
-→ {"jsonrpc":"2.0","id":3,"method":"robot.look","params":{"x":0.3,"y":0.0,"z":-0.12}}
-← {"jsonrpc":"2.0","id":3,"result":{"head":{...},"clamped":false}}
+→ {"jsonrpc":"2.0","id":4,"method":"robot.look","params":{"x":0.3,"y":0.0,"z":-0.12}}
+← {"jsonrpc":"2.0","id":4,"result":{"head":{...},"clamped":false}}
 ```
 
 **5. Get a camera image.** A JPEG, 640 by 360, base64 in the reply.
 
 ```text
-→ {"jsonrpc":"2.0","id":4,"method":"sim.frame"}
-← {"jsonrpc":"2.0","id":4,"result":{"width":640,"height":360,"format":"jpeg","data":"<base64>"}}
+→ {"jsonrpc":"2.0","id":5,"method":"sim.frame"}
+← {"jsonrpc":"2.0","id":5,"result":{"width":640,"height":360,"format":"jpeg","data":"<base64>"}}
 ```
 
-In Python, using the client in `hal_interfaces/client.py`:
+The same five steps in Python, using the client in `hal_interfaces/client.py`:
 
 ```python
-import time
-from microduck_academy.hal_interfaces.client import DuckClient
+import base64, io, time
+from PIL import Image
+from microduck_academy.hal_interfaces.client import API_VERSION, DuckClient
 
 duck = DuckClient("/tmp/duckd.sock")
-duck.call("hello", {"api_version": 16})
-duck.call("robot.subscribe", {"hz": 10})
+duck.call("hello", {"api_version": API_VERSION})            # 1. hello
+duck.call("robot.subscribe", {"hz": 10})                    # 2. state updates
 
-for _ in range(100):                                   # 5 seconds at 20 Hz
+for _ in range(100):                                        # 3. walk: 5 s, resent at 20 Hz
     duck.notify("robot.move", {"vx": 0.3, "vy": 0.0, "vyaw": 0.0})
-    state = duck.state()
-    if state and state["safety"]["fallen"]:            # note: nested under "safety"
+    state = duck.state()                                    # None until the first robot.state
+    if state and state["safety"]["fallen"]:                 # nested under "safety"
         break
     time.sleep(0.05)
-
 duck.call("robot.stop")
+
+duck.call("robot.look", {"x": 0.3, "y": 0.0, "z": -0.12})  # 4. look at the floor
+frame = duck.call("sim.frame")                              # 5. camera image
+image = Image.open(io.BytesIO(base64.b64decode(frame["data"])))  # 640 x 360, RGB
 ```
 
-That is the whole loop. The rest of this document is the reference.
+That is the raw protocol. In a HAL, `MotorsDuck` resends `robot.move` for
+you, and `OdometryDuck` and `CameraDuck` wrap steps 2 and 5; see section 6.
+The rest of this document is the reference.
 
 ## 1. How messages work
 
@@ -109,7 +124,9 @@ enable a policy on a fallen robot. Check `accepted`; do not only check for
 
 **Errors** replace `result` with `error: {"code", "message", "data"?}`.
 The codes are the JSON-RPC standard ones: `-32601` unknown method,
-`-32602` bad parameters (a misspelt skill name, for example).
+`-32602` bad parameters (a misspelt skill name, for example), `-32603`
+internal error (on the simulator, `sim.frame` when there is no OpenGL
+context to render with).
 
 **Handshake.** Send `hello` with `api_version: 16` once after connecting.
 The reply's `daemon_version` and `revision` are `null` on the simulator
@@ -178,7 +195,9 @@ joints. Discrete.
 The reply's `head` is what was sent to the joints; resend it as
 `robot.head` to hold the gaze. `clamped: true` means the point is beyond
 the head's reach and the joints are the closest gaze, not a lock. The
-numbers in the example are illustrative.
+numbers in the example are illustrative. A point straight above or below
+the trunk origin (`x` and `y` both 0) has no direction to look in and is
+refused with error `-32602`.
 
 Why a student needs this: with the head level the camera does not see the
 floor closer than about 0.5 m, so a ball at the duck's feet is visible only
@@ -262,10 +281,12 @@ Turn the connection into a stream of `robot.state` notifications. Discrete.
 
 The reply names the policy files loaded for the life of the process
 (`walk`, `stand`, and the skills as `sitstand`, `ground_pick`,
-`kick_left`, ...); a missing key means that skill is not available. File
-names shown are illustrative. One stream per connection: subscribing again
-on the same connection changes its rate rather than starting a second
-stream.
+`kick_left`, `kick_right`, `roulade`), as file names, not paths; a missing
+key means that skill is not available. On the real robot, `unavailable`
+says why no policy is driving when none is. The simulator always has its
+policies and never sends `unavailable`. File names shown are illustrative.
+One stream per connection: subscribing again on the same connection
+changes its rate rather than starting a second stream.
 
 ### robot.state
 
@@ -302,7 +323,7 @@ not measured):
 | `safety.gain` | integer or absent | servo P gain actually running |
 | `loop.hz` | number | achieved control rate over the last window |
 | `loop.missed` | integer | ticks that overran, cumulative |
-| `joints` | 15 numbers | measured joint angles, radians, in `JOINT_NAMES` order |
+| `joints` | 15 numbers (14 on the simulator, see section 5) | measured joint angles, radians, in `JOINT_NAMES` order |
 | `targets` | 15 numbers | commanded joint angles, same order, so a viewer can show tracking error |
 | `odom.position` | `[x, y, z]` | trunk position, metres, in the frame the robot woke up in; `z` is height above ground |
 | `odom.yaw` | number | heading, radians |
@@ -326,7 +347,7 @@ yaw = state["odom"]["yaw"]
 These do not exist on the real robot, which streams video through a
 different service and has no reset button. A HAL that uses them needs a
 different implementation of the same functions on hardware. All are
-discrete. Their shapes are ours and may change until the server lands.
+discrete. Their shapes are ours and may still change.
 
 ### sim.frame
 
