@@ -7,8 +7,9 @@ written against this server should later work on a physical Microduck.
 Anything prefixed `sim.` exists only in this simulator.
 
 Status: draft. The simulator server (`duckd_sim.py`) implements everything
-in sections 2 and 3. Section 5 lists what is still to be confirmed against
-the real robot. The appendix says where every name comes from.
+in sections 2 and 3 except what is marked planned. Section 5 lists what is
+still to be confirmed against the real robot. The appendix says where every
+name comes from.
 
 ## Quick start
 
