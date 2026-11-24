@@ -220,3 +220,26 @@ def test_wait_for_state_fails_fast_when_server_dies(listening_skt, duck):
     with pytest.raises(ConnectionError, match="lost connection"):
         duck.wait_for_state(timeout=5.0)
     assert time.monotonic() - start < 1.0, "should not wait out the timeout"
+
+
+def test_wait_for_state(listening_skt, duck):
+    """wait_for_state() wakes up and returns the state as soon as a robot.state arrives."""
+    server_end_skt, _ = listening_skt.accept()
+
+    # Play server in another thread: push a state once the client is already waiting
+    def send_state_later():
+        time.sleep(0.1)
+        send(
+            server_end_skt,
+            {"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 1.0}},
+        )
+
+    threading.Thread(target=send_state_later).start()
+
+    start = time.monotonic()
+    assert duck.state() is None, "a state arrived before the client started waiting"
+    assert duck.wait_for_state(timeout=5.0) == {"t": 1.0}
+    assert (
+        time.monotonic() - start < 1.0
+    ), "should wake on arrival, not wait out the timeout"
+    server_end_skt.close()
