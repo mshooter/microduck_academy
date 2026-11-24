@@ -166,22 +166,54 @@ def test_concurrent_sends(listening_skt, duck):
     assert broken == 0, f"{broken} of {len(lines)} lines were garbled"
 
 
-def test_handle_keeps_replies_and_latest_state(duck):
-    """_handle stores a reply under its id and keeps only the newest robot.state."""
-    duck._handle({"jsonrpc": "2.0", "id": 7, "result": {"accepted": True}})
-    duck._handle({"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 1.0}})
-    duck._handle({"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 2.0}})
+def test_handle_reply(duck):
+    """_handle keeps replies by id."""
+    reply_id = 7
+    reply = {"jsonrpc": "2.0", "id": reply_id, "result": {"accepted": True}}
 
-    assert duck.replies[7]["result"] == {"accepted": True}
-    assert duck.state() == {"t": 2.0}
+    duck._handle(reply)
+
+    assert duck.replies == {reply_id: reply}
 
 
-def test_handle_ignores_other_notifications(duck):
-    """Notifications other than robot.state change nothing."""
-    duck._handle({"jsonrpc": "2.0", "method": "something.else", "params": {"x": 1}})
+def create_state_notification(t_param):
+    return {"jsonrpc": "2.0", "method": "robot.state", "params": {"t": t_param}}
 
+
+@pytest.mark.parametrize(
+    "server_msgs, expected_last_state",
+    [
+        (
+            [create_state_notification(1.0)],
+            {"t": 1.0},
+        ),
+        (
+            [create_state_notification(1.0), create_state_notification(2.0)],
+            {"t": 2.0},
+        ),
+        (
+            [{"jsonrpc": "2.0", "method": "something.else", "params": {"x": 1}}],
+            None,
+        ),
+        (
+            [{"jsonrpc": "2.0"}],
+            None,
+        ),
+    ],
+    ids=[
+        "state-kept",
+        "newest-state-wins",
+        "other-method-ignored",
+        "empty-method-ignored",
+    ],
+)
+def test_handle_state(duck, server_msgs, expected_last_state):
+    """_handle keeps the newest robot.state and ignores other notifications."""
+    for msg in server_msgs:
+        duck._handle(msg)
+
+    assert duck.last_state == expected_last_state
     assert duck.replies == {}
-    assert duck.state() is None
 
 
 def test_call_returns_the_reply_with_its_id(listening_skt, duck):
