@@ -116,12 +116,12 @@ order, so other lines may arrive in between. Pollen's own example:
 | kind | sent as | methods | why |
 |---|---|---|---|
 | continuous | notification, resent 20 to 50 Hz, last one wins, expires | `robot.move`, `robot.head` | a stale command is worse than none, so nothing is queued or acknowledged |
-| discrete | request with `id`, answered | `robot.stop`, `robot.look`, `robot.do`, `robot.subscribe`, all `sim.*` | the caller needs to know whether it was accepted and why not |
+| discrete | request with `id`, answered | `robot.stop`, `robot.enable`, `robot.look`, `robot.do`, `robot.subscribe`, all `sim.*` | the caller needs to know whether it was accepted and why not |
 
 **Refusal is not an error.** A discrete intent can answer
-`{"accepted": false, "reason": "..."}`, for example when safety will not
-enable a policy on a fallen robot. Check `accepted`; do not only check for
-`error`.
+`{"accepted": false, "reason": "..."}`, for example when `robot.do` asks
+for a skill this robot has no policy for. Check `accepted`; do not only
+check for `error`.
 
 **Errors** replace `result` with `error: {"code", "message", "data"?}`.
 The codes are the JSON-RPC standard ones: `-32601` unknown method,
@@ -253,18 +253,26 @@ the policy.
 
 | field | type | meaning |
 |---|---|---|
-| `on` | bool | `true` runs the policy, `false` stops it |
+| `on` | bool | `true` runs the policy, `false` stops it. Required, even with `toggle` |
 | `toggle` | bool, optional | flip the current state instead; `on` is then ignored. Default `false` |
 
 ```text
 → {"jsonrpc":"2.0","id":10,"method":"robot.enable","params":{"on":false}}
-← {"jsonrpc":"2.0","id":10,"result":{"accepted":true,"reason":"policy off"}}
+← {"jsonrpc":"2.0","id":10,"result":{"accepted":true,"reason":"disabled — returning to the home pose"}}
 ```
 
 If both are sent, `toggle` wins and `on` is ignored. The reply's
-`reason` names the state the duck ended in, `policy on` or `policy off`,
-which is how a client using `toggle` learns where it is.
-While the policy is off, `robot.state.policy` is `held`.
+`reason` names the state the duck ended in, `enabled — driving` or
+`disabled — returning to the home pose` (the real robot's exact strings,
+em dash included), which is how a client using `toggle` learns where it
+is. It is never refused, not even when the duck has fallen: switching the
+policy on is how a fallen duck is asked to stand back up.
+
+While the policy is off, `robot.state.policy` is `held`. `robot.move`,
+`robot.head` and `robot.look` are accepted but have no effect. `robot.do`
+answers `{"accepted": true}`, but the skill does not run: skills need the
+policy. This copies the real robot, so check `state.policy` before asking
+for a skill.
 
 ### robot.subscribe
 
@@ -479,9 +487,14 @@ Settled when the real daemon's source is read or the real robot is measured.
 - `safety.gain` is not sent by the simulator (no servos to read it from).
 - `sim.setJointTargets` exists only in the simulator: the real robot does
   not accept raw joint commands from clients.
-- With the policy off, the real robot's behaviour beyond returning to its
-  home pose is not known; the simulator holds the default pose until
-  `sim.setJointTargets` arrives, then the last targets it was sent.
+- With the policy off, the real robot holds its home pose and ignores
+  every intent (see `robot.enable`); it has no way to move the joints
+  individually. The simulator does the same, except that
+  `sim.setJointTargets` can then move them, and it holds the last targets
+  it was sent.
+- The real robot boots with the policy off ("nothing drives until
+  something asks"); the simulator starts with it on, so a client can walk
+  straight away.
 
 ## 6. Client and demo
 
@@ -525,7 +538,7 @@ commit. `sim.*` methods have no source; they are ours.
 | `robot.head`; `HeadParams` | 310; 1517 to 1522 |
 | `robot.look`; `LookParams`; `LookResult`; "never has to know which way head_yaw turns" | 313; 1531 to 1539; 1543 to 1549; 1526 |
 | `robot.stop` | 315 |
-| `robot.enable`; `EnableParams` (`on`, `toggle`); off returns to home pose, `reason` names the end state | 317; 1806 to 1825; 1819 to 1822 |
+| `robot.enable`; `EnableParams` (`on` required, `toggle`); off returns to home pose, `reason` names the end state | 317; 1806 to 1825; 1819 to 1822 |
 | `robot.do`; refusal wording; `DoParams`; `Skill` names; `snake_case`; typo is invalid params | 352; 350 to 351; 1693; 1675 to 1687; 1674; 1671 |
 | `robot.subscribe`; `SubscribeParams`; `SubscribeResult` | 416; 1758 to 1761; 1775 to 1800 |
 | `robot.state`; struct | 425; 2560 to 2590 |
@@ -539,3 +552,19 @@ commit. `sim.*` methods have no source; they are ours.
 | clients ignore unknown keys | 423 to 424 |
 | the full `robot.*` list | 296 to 425 |
 | measured facts (dead zone, frame geometry) | this repo, `src/microduck_academy/smoke.py`, 2026-09-26 |
+
+What the robot *does* with a message (as opposed to its shape) comes from
+the daemon,
+[`robotd/src/main.rs`](https://github.com/pollen-robotics/microduck/blob/590b986bd8c0d50ae02cb3ea2f59c463b6828168/robotd/src/main.rs)
+at the same commit. Unchanged on Pollen's `main` as of 2026-11-25.
+
+| behaviour | lines |
+|---|---|
+| `robot.enable`: `toggle` flips the robot's own state; never refused, not even when fallen | 2927 to 2934 |
+| `robot.enable` reply strings | 2945; 2947 |
+| switching off commands the home pose, no ramp | 1908 to 1912 |
+| `state.policy` is `held` when the policy is not driving | 1995 |
+| `robot.move`, `robot.head` accepted whatever the policy state | 2682 to 2689 |
+| `robot.do` refused only when no policy is configured for the skill | 2734 |
+| skill requests are dropped while the policy is off | 1443 to 1446; 1484 |
+| the robot boots with the policy off | `robotd/src/intents.rs` 538 |
