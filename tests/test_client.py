@@ -164,3 +164,118 @@ def test_concurrent_sends(listening_skt, duck):
         except json.JSONDecodeError:
             broken += 1
     assert broken == 0, f"{broken} of {len(lines)} lines were garbled"
+
+
+def test_handle_reply(duck):
+    """_handle keeps replies by id."""
+    reply_id = 7
+    reply = {"jsonrpc": "2.0", "id": reply_id, "result": {"accepted": True}}
+
+    duck._handle(reply)
+
+    assert duck.replies == {reply_id: reply}
+
+
+def create_state_notification(t_param):
+    return {"jsonrpc": "2.0", "method": "robot.state", "params": {"t": t_param}}
+
+
+@pytest.mark.parametrize(
+    "server_msgs, expected_last_state",
+    [
+        (
+            [create_state_notification(1.0)],
+            {"t": 1.0},
+        ),
+        (
+            [create_state_notification(1.0), create_state_notification(2.0)],
+            {"t": 2.0},
+        ),
+        (
+            [{"jsonrpc": "2.0", "method": "something.else", "params": {"x": 1}}],
+            None,
+        ),
+        (
+            [{"jsonrpc": "2.0"}],
+            None,
+        ),
+    ],
+    ids=[
+        "state-kept",
+        "newest-state-wins",
+        "other-method-ignored",
+        "empty-method-ignored",
+    ],
+)
+def test_handle_state(duck, server_msgs, expected_last_state):
+    """_handle keeps the newest robot.state and ignores other notifications."""
+    for msg in server_msgs:
+        duck._handle(msg)
+
+    assert duck.last_state == expected_last_state
+    assert duck.replies == {}
+
+
+def test_call_returns_the_reply_with_its_id(listening_skt, duck):
+    """call() returns the reply with its own id, not the first to arrive."""
+    server_end_skt, _ = listening_skt.accept()
+
+    # Play server in another thread: answer another request's id first, then this one's
+    def reply_to_request():
+        request = json.loads(server_end_skt.makefile("r", encoding="utf-8").readline())
+        other = {
+            "jsonrpc": "2.0",
+            "id": request["id"] + 1,
+            "result": {"api_version": 0},
+        }
+        mine = {"jsonrpc": "2.0", "id": request["id"], "result": {"api_version": 16}}
+        send(server_end_skt, other)
+        send(server_end_skt, mine)
+
+    threading.Thread(target=reply_to_request).start()
+
+    assert duck.call("hello", {"api_version": 16}, timeout=2.0) == {"api_version": 16}
+    server_end_skt.close()
+
+
+def test_call_times_out_when_no_reply(listening_skt, duck):
+    """With the server connected but silent, call() raises TimeoutError, not ConnectionError."""
+    server_end_skt, _ = listening_skt.accept()
+
+    with pytest.raises(TimeoutError, match="no reply to hello"):
+        duck.call("hello", timeout=0.2)
+    server_end_skt.close()
+
+
+def test_wait_for_state_fails_fast_when_server_dies(listening_skt, duck):
+    """If the server goes away before any robot.state, wait_for_state raises at once."""
+    server_end_skt, _ = listening_skt.accept()
+    server_end_skt.close()
+
+    start = time.monotonic()
+    with pytest.raises(ConnectionError, match="lost connection"):
+        duck.wait_for_state(timeout=5.0)
+    assert time.monotonic() - start < 1.0, "should not wait out the timeout"
+
+
+def test_wait_for_state(listening_skt, duck):
+    """wait_for_state() wakes up and returns the state as soon as a robot.state arrives."""
+    server_end_skt, _ = listening_skt.accept()
+
+    # Play server in another thread: push a state once the client is already waiting
+    def send_state_later():
+        time.sleep(0.1)
+        send(
+            server_end_skt,
+            {"jsonrpc": "2.0", "method": "robot.state", "params": {"t": 1.0}},
+        )
+
+    threading.Thread(target=send_state_later).start()
+
+    start = time.monotonic()
+    assert duck.state() is None, "a state arrived before the client started waiting"
+    assert duck.wait_for_state(timeout=5.0) == {"t": 1.0}
+    assert (
+        time.monotonic() - start < 1.0
+    ), "should wake on arrival, not wait out the timeout"
+    server_end_skt.close()
