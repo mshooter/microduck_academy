@@ -184,12 +184,18 @@ class DuckSim:
         self.reset()
 
     # -- simulation -----------------------------------------------------------
-    def reset(self) -> None:
+    @property
+    def has_ball(self) -> bool:
+        return self.policy.ball_qpos_adr is not None
+
+    def reset(self, seed: int | None = None) -> None:
         with self.lock:
             self._end_any_skill()
             smoke.reset_pose(self.model, self.data, self.policy)
             self.policy.head_offset[:] = 0.0
             self.deadman = Deadman()
+            if seed is not None:
+                self._place_ball(*ball_placement(seed))
 
     def _place_ball(self, x: float, y: float) -> None:
         """Put the ball at rest on the floor at position (x, y), world frame."""
@@ -410,13 +416,21 @@ class DuckSim:
         }
 
     def _reset(self, params: Any) -> Params:
-        _params(params, set())
-        self.reset()
+        p = _params(params, {"seed"})
+        seed = p.get("seed")
+        if seed is not None:
+            if not isinstance(seed, int) or seed < 0 or isinstance(seed, bool):
+                raise RpcError(
+                    INVALID_PARAMS, f"seed must be a non-negative integer, got {seed!r}"
+                )
+            if not self.has_ball:
+                return {"accepted": False, "reason": "no ball in this scene"}
+        self.reset(seed)
         return {"accepted": True}
 
     def _spawn_ball(self, params: Any) -> Params:
         p = _params(params, {"x", "y"})
-        if self.policy.ball_qpos_adr is None:
+        if not self.has_ball:
             return {"accepted": False, "reason": "no ball in this scene"}
         self._place_ball(float(p.get("x", 0.3)), float(p.get("y", 0.0)))
         return {"accepted": True}
