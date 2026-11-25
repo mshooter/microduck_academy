@@ -177,6 +177,19 @@ class DuckSim:
             self.policy.head_offset[:] = 0.0
             self.deadman = Deadman()
 
+    def _place_ball(self, x: float, y: float) -> None:
+        """Put the ball at rest on the floor at position (x, y), world frame."""
+        with self.lock:
+            adr, vadr = self.policy.ball_qpos_adr, self.policy.ball_qvel_adr
+            self.data.qpos[adr : adr + 3] = [
+                x,
+                y,
+                BALL_RADIUS,
+            ]  # resting on the floor
+            self.data.qpos[adr + 3 : adr + 7] = [1, 0, 0, 0]
+            self.data.qvel[vadr : vadr + 6] = 0.0
+            mujoco.mj_forward(self.model, self.data)
+
     def tick(self) -> None:
         """One 50 Hz step: deadman, policy, physics."""
         with self.lock:
@@ -391,17 +404,7 @@ class DuckSim:
         p = _params(params, {"x", "y"})
         if self.policy.ball_qpos_adr is None:
             return {"accepted": False, "reason": "no ball in this scene"}
-        bx, by = float(p.get("x", 0.3)), float(p.get("y", 0.0))
-        with self.lock:
-            adr, vadr = self.policy.ball_qpos_adr, self.policy.ball_qvel_adr
-            self.data.qpos[adr : adr + 3] = [
-                bx,
-                by,
-                BALL_RADIUS,
-            ]  # resting on the floor
-            self.data.qpos[adr + 3 : adr + 7] = [1, 0, 0, 0]
-            self.data.qvel[vadr : vadr + 6] = 0.0
-            mujoco.mj_forward(self.model, self.data)
+        self._place_ball(float(p.get("x", 0.3)), float(p.get("y", 0.0)))
         return {"accepted": True}
 
     METHODS: dict[str, Callable[["DuckSim", Any], Any]] = {

@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from microduck_academy import duckd_sim
+from microduck_academy.duckd_sim import BALL_RADIUS
 from microduck_academy.hal_interfaces.client import DuckClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -223,3 +224,15 @@ def test_look_at_the_floor_turns_the_camera_down(duck, server, wait_sim_seconds)
     assert (
         z_down < z_level - 0.1
     ), f"look z went {z_level:.2f} -> {z_down:.2f}, expected more negative"
+
+
+def test_spawn_ball_at_position(duck, server):
+    reply = duck.call("sim.spawnBall", {"x": 0.8, "y": -0.2})
+    assert reply["accepted"] is True
+
+    adr = server.sim.policy.ball_qpos_adr
+    with server.sim.lock:
+        x, y, z = server.sim.data.qpos[adr : adr + 3].copy()
+
+    assert (x, y) == pytest.approx((0.8, -0.2), abs=1e-3)
+    assert z == pytest.approx(BALL_RADIUS, abs=1e-3)
