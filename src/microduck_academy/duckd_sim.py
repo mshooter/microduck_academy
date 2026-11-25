@@ -52,6 +52,7 @@ import io
 import logging
 import math
 import os
+import random
 import sys
 import threading
 import time
@@ -77,6 +78,9 @@ MOVE_EXPIRY = 0.5  # s of sim time without a robot.move before the velocity is z
 HEAD_FIELDS = ("neck_pitch", "head_pitch", "head_yaw", "head_roll")
 HEAD_LIMIT = 1.4  # rad, PolicyInference.head_max for the new-command policies
 BALL_RADIUS = 0.035  # m, from assets/microduck/ball.xml
+# Where a seeded sim.reset may put the ball: m, world frame, ahead of the duck (docs/api.md, sim.reset).
+BALL_X = (0.5, 1.5)
+BALL_Y = (-0.5, 0.5)
 CAMERA_ABOVE_TRUNK = (
     0.05  # m, rough camera height above the trunk origin, for robot.look
 )
@@ -108,6 +112,16 @@ def _params(params: Any, allowed: set[str]) -> Params:
 
 def _clip(v: float, limit: float) -> float:
     return max(-limit, min(limit, v))
+
+
+def ball_placement(seed: int) -> tuple[float, float]:
+    """A random but repeatable ball placement: the same seed always gives the same (x, y)."""
+    # A private generator, so nothing else drawing random numbers can move a seed's spot.
+    # Built on rng.random() alone: Python guarantees its sequence per seed across versions.
+    rng = random.Random(seed)
+    x = BALL_X[0] + (BALL_X[1] - BALL_X[0]) * rng.random()
+    y = BALL_Y[0] + (BALL_Y[1] - BALL_Y[0]) * rng.random()
+    return x, y
 
 
 class Deadman:
