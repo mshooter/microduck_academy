@@ -13,7 +13,8 @@ PolicyInference:
     robot.stop       -> set_vel_cmd(0, 0, 0)
     robot.head       -> head_offset, a command the policy follows (offsets from its default head pose)
     robot.look       -> head_offset from a geometric approximation with measured signs
-    robot.do         -> trigger_ground_pick / trigger_behavior / toggle_sit
+    robot.do         -> trigger_ground_pick / trigger_behavior / toggle_sit (dropped while held)
+    robot.enable     -> policy_enabled; while off, tick() writes `hold` to data.ctrl instead of the policy
     robot.subscribe  -> streaming is done by rpc.py; the frame comes from DuckSim.state()
     sim.frame        -> render_frame (needs an OpenGL context; EGL/GLX/CGL)
     sim.reset        -> reset_pose
@@ -33,6 +34,7 @@ Threads, and the one lock they share:
       tick()    control thread, 50 Hz real time:
                   1. deadman.check(t): zero the velocity if the last move is older than MOVE_EXPIRY
                   2. smoke.control_tick(policy): observation -> ONNX -> data.ctrl
+                     (or, with the policy off, data.ctrl = hold)
                   3. smoke.step_physics(): 4 x mj_step
       --viewer  main thread, view.sync() under the same lock
 
@@ -95,6 +97,10 @@ POLICY_NAMES = {
     "standing": "stand",
     "sit": "sit",
 }  # Pollen's names -> the protocol's
+# Ours, not Pollen's: at the trained kp the held duck falls over
+HOLD_KP_SCALE = 3.0
+REASON_ENABLED = "enabled — driving"
+REASON_DISABLED = "disabled — returning to the home pose"
 
 Params = dict[str, Any]
 
@@ -181,6 +187,10 @@ class DuckSim:
         self._frame_lock = threading.Lock()
         self.loop_hz = 0.0
         self.missed = 0
+        self.policy_enabled = True
+        self.hold = self.policy.default_pose.copy()
+        self._kp = self.model.actuator_gainprm[:, 0].copy()
+        self._kp_bias = self.model.actuator_biasprm[:, 1].copy()
         self.reset()
 
     # -- simulation -----------------------------------------------------------
@@ -194,8 +204,29 @@ class DuckSim:
             smoke.reset_pose(self.model, self.data, self.policy)
             self.policy.head_offset[:] = 0.0
             self.deadman = Deadman()
+            self.policy_enabled = True
+            self.hold[:] = self.policy.default_pose
+            self._set_servo_stiffness(1.0)
             if seed is not None:
                 self._place_ball(*ball_placement(seed))
+
+    def set_policy_enabled(self, on: bool) -> None:
+        with self.lock:
+            if on == self.policy_enabled:
+                return
+            if on:
+                self.policy.last_action[:] = 0
+                self._set_servo_stiffness(1.0)
+            else:
+                self._end_any_skill()
+                self.hold[:] = self.policy.default_pose
+                self._set_servo_stiffness(HOLD_KP_SCALE)
+            self.policy_enabled = on
+
+    def _set_servo_stiffness(self, scale: float) -> None:
+        # MuJoCo's position actuator stores kp twice: gainprm[0] = kp, biasprm[1] = -kp.
+        self.model.actuator_gainprm[:, 0] = self._kp * scale
+        self.model.actuator_biasprm[:, 1] = self._kp_bias * scale
 
     def _place_ball(self, x: float, y: float) -> None:
         """Put the ball at rest on the floor at position (x, y), world frame."""
@@ -211,11 +242,14 @@ class DuckSim:
             mujoco.mj_forward(self.model, self.data)
 
     def tick(self) -> None:
-        """One 50 Hz step: deadman, policy, physics."""
+        """One 50 Hz step: deadman, policy or hold pose, physics."""
         with self.lock:
             if self.deadman.check(self.data.time):
                 self.policy.set_vel_cmd(0.0, 0.0, 0.0)
-            smoke.control_tick(self.policy)
+            if self.policy_enabled:
+                smoke.control_tick(self.policy)
+            else:
+                self.data.ctrl[:] = self.hold
             smoke.step_physics(self.model, self.data)
 
     def run_forever(self, stop: threading.Event, realtime: bool = True) -> None:
@@ -273,6 +307,8 @@ class DuckSim:
         self.policy._update_command()  # push the new head command into the observation
 
     def _policy_name(self) -> str:
+        if not self.policy_enabled:
+            return "held"
         name = self.policy.behavior_mode or self.policy.current_policy
         return POLICY_NAMES.get(name, name)
 
@@ -391,6 +427,8 @@ class DuckSim:
                 INVALID_PARAMS, f"unknown skill {skill!r}; one of {list(SKILLS)}"
             )
         with self.lock:
+            if not self.policy_enabled:
+                return {"accepted": True}  # robotd also accepts, then drops it
             holding = self._skill_holding()
             if holding and skill != "sit_toggle":
                 return {"accepted": False, "reason": f"{holding} is holding the robot"}
@@ -400,6 +438,20 @@ class DuckSim:
             if ok
             else {"accepted": False, "reason": f"{skill} refused by the policy loop"}
         )
+
+    def _enable(self, params: Any) -> Params:
+        p = _params(params, {"on", "toggle"})
+        on, toggle = p.get("on"), p.get("toggle", False)
+        if not isinstance(on, bool) or not isinstance(toggle, bool):
+            raise RpcError(
+                INVALID_PARAMS,
+                f"`on` is required and must be true or false, `toggle` must be true or false; "
+                f"got on={on!r}, toggle={toggle!r}",
+            )
+        with self.lock:
+            want = (not self.policy_enabled) if toggle else on
+            self.set_policy_enabled(want)
+        return {"accepted": True, "reason": REASON_ENABLED if want else REASON_DISABLED}
 
     def _subscribe(self, params: Any) -> Params:
         _params(params, {"hz"})  # the stream itself is started by rpc.py
@@ -442,6 +494,7 @@ class DuckSim:
         "robot.head": _head,
         "robot.look": _look,
         "robot.do": _do,
+        "robot.enable": _enable,
         "robot.subscribe": _subscribe,
         "sim.frame": _frame,
         "sim.reset": _reset,

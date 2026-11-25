@@ -110,7 +110,7 @@ def test_discrete_intents_answer_accepted(duck):
 
 def test_unknown_method_and_bad_params_fail_loudly(duck):
     with pytest.raises(RuntimeError, match="-32601"):
-        duck.call("robot.enable", {"enabled": True})
+        duck.call("robot.fly", {})
     with pytest.raises(RuntimeError, match="-32602"):
         duck.call("robot.do", {"skill": "kick_lef"})
     with pytest.raises(RuntimeError, match="-32602"):
@@ -285,3 +285,96 @@ def test_reset_with_seed_refused_without_ball(duck, server, monkeypatch):
     reply = duck.call("sim.reset", {"seed": 7})
 
     assert reply == {"accepted": False, "reason": "no ball in this scene"}
+
+
+# -- robot.enable -------------------------------------------------------------------
+# Written out, not imported, so the test cannot agree with the server by sharing a typo.
+ENABLED = {"accepted": True, "reason": "enabled — driving"}
+DISABLED = {"accepted": True, "reason": "disabled — returning to the home pose"}
+
+
+def test_enable_off_holds_default_pose(duck, server, wait_sim_seconds):
+    duck.call("robot.subscribe", {"hz": 20})
+
+    assert duck.call("robot.enable", {"on": False}) == DISABLED
+
+    state = wait_sim_seconds(duck, 0.2)
+    assert state["policy"] == "held"
+    default_pose = [float(v) for v in server.sim.policy.default_pose]
+    assert state["targets"] == pytest.approx(default_pose, abs=1e-3)
+
+
+def test_enable_on_restores_policy(duck, wait_sim_seconds):
+    duck.call("robot.subscribe", {"hz": 20})
+    duck.call("robot.enable", {"on": False})
+
+    assert duck.call("robot.enable", {"on": True}) == ENABLED
+
+    assert wait_sim_seconds(duck, 0.2)["policy"] != "held"
+
+
+def test_enable_toggle_overrides_on(duck):
+    assert duck.call("robot.enable", {"on": True, "toggle": True}) == DISABLED
+    assert duck.call("robot.enable", {"on": True, "toggle": True}) == ENABLED
+
+
+@pytest.mark.parametrize(
+    "params",
+    [{}, {"toggle": True}, {"on": 1}, {"on": "false"}, {"on": True, "toggle": "yes"}],
+    ids=["missing-on", "toggle-without-on", "int-on", "string-on", "string-toggle"],
+)
+def test_enable_rejects_bad_params(duck, params):
+    with pytest.raises(RuntimeError, match="-32602"):
+        duck.call("robot.enable", params)
+
+
+def test_held_duck_stays_standing(duck, wait_sim_seconds):
+    duck.call("robot.subscribe", {"hz": 20})
+    z0 = wait_sim_seconds(duck, 0.2)["odom"]["position"][2]
+    duck.call("robot.enable", {"on": False})
+
+    state = wait_sim_seconds(duck, 3.0)
+
+    assert state["safety"]["fallen"] is False
+    assert state["odom"]["position"][2] == pytest.approx(z0, abs=0.01)
+
+
+def test_enable_on_restores_trained_stiffness(duck, server):
+    duck.call("robot.enable", {"on": False})
+    duck.call("robot.enable", {"on": True})
+
+    assert server.sim.model.actuator_gainprm[:, 0] == pytest.approx(server.sim._kp)
+
+
+def test_move_ignored_while_held(duck, wait_sim_seconds):
+    duck.call("robot.subscribe", {"hz": 20})
+    duck.call("robot.enable", {"on": False})
+    x0 = wait_sim_seconds(duck, 0.2)["odom"]["position"][0]
+
+    t_end = time.monotonic() + 1.5
+    while time.monotonic() < t_end:
+        duck.notify("robot.move", {"vx": 0.3})
+        time.sleep(0.05)
+
+    state = duck.state()
+    assert state["policy"] == "held"
+    assert state["odom"]["position"][0] == pytest.approx(x0, abs=0.02)
+    assert state["safety"]["fallen"] is False
+
+
+def test_do_accepted_but_ignored_while_held(duck, wait_sim_seconds):
+    duck.call("robot.subscribe", {"hz": 20})
+    duck.call("robot.enable", {"on": False})
+
+    assert duck.call("robot.do", {"skill": "kick_left"}) == {"accepted": True}
+
+    assert wait_sim_seconds(duck, 0.3)["policy"] == "held"
+
+
+def test_reset_reenables_policy(duck, wait_sim_seconds):
+    duck.call("robot.subscribe", {"hz": 20})
+    duck.call("robot.enable", {"on": False})
+
+    duck.call("sim.reset")
+
+    assert wait_sim_seconds(duck, 0.2)["policy"] != "held"
