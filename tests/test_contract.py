@@ -12,6 +12,7 @@ from pathlib import Path
 
 import pytest
 from microduck_academy import duckd_sim
+from microduck_academy.duckd_sim import BALL_RADIUS, ball_placement
 from microduck_academy.hal_interfaces.client import DuckClient
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,6 +51,13 @@ def duck(server):
     d.call("hello", {"api_version": 16})
     yield d
     d.close()  # so the server stops streaming to a dead socket
+
+
+def ball_xy(sim):
+    """The ball's (x, y), world frame, read under the sim lock so x and y come from the same step."""
+    with sim.lock:
+        adr = sim.policy.ball_qpos_adr
+        return tuple(sim.data.qpos[adr : adr + 2])
 
 
 # -- wire shapes ------------------------------------------------------------------
@@ -223,3 +231,57 @@ def test_look_at_the_floor_turns_the_camera_down(duck, server, wait_sim_seconds)
     assert (
         z_down < z_level - 0.1
     ), f"look z went {z_level:.2f} -> {z_down:.2f}, expected more negative"
+
+
+def test_spawn_ball_at_position(duck, server):
+    reply = duck.call("sim.spawnBall", {"x": 0.8, "y": -0.2})
+    assert reply["accepted"] is True
+
+    adr = server.sim.policy.ball_qpos_adr
+    with server.sim.lock:
+        x, y, z = server.sim.data.qpos[adr : adr + 3].copy()
+
+    assert (x, y) == pytest.approx((0.8, -0.2), abs=1e-3)
+    assert z == pytest.approx(BALL_RADIUS, abs=1e-3)
+
+
+def test_reset_without_seed_returns_ball_to_start(duck, server):
+    # Move the ball away first: the fixture already reset it, so without this the test
+    # would pass even if sim.reset never touched the ball.
+    duck.call("sim.spawnBall", {"x": 1.0, "y": 0.4})
+
+    reply = duck.call("sim.reset", {})
+
+    assert reply["accepted"] is True
+    assert ball_xy(server.sim) == pytest.approx((0.3, 0.0), abs=1e-3)
+
+
+def test_reset_with_seed_uses_ball_placement(duck, server):
+    reply = duck.call("sim.reset", {"seed": 7})
+
+    assert reply["accepted"] is True
+    assert ball_xy(server.sim) == pytest.approx(ball_placement(7), abs=1e-3)
+
+
+@pytest.mark.parametrize(
+    "bad_seed",
+    ["42", True, 1.5, -1],
+    ids=["string", "bool", "float", "negative"],
+)
+def test_reset_rejects_bad_seed(duck, server, bad_seed):
+    duck.call("sim.spawnBall", {"x": 1.0, "y": 0.4})
+
+    with pytest.raises(RuntimeError, match="-32602"):
+        duck.call("sim.reset", {"seed": bad_seed})
+
+    # A rejected request changes nothing.
+    assert ball_xy(server.sim) == pytest.approx((1.0, 0.4), abs=1e-3)
+
+
+def test_reset_with_seed_refused_without_ball(duck, server, monkeypatch):
+    # Pretend the scene has no ball through the seam DuckSim owns (has_ball)
+    monkeypatch.setattr(type(server.sim), "has_ball", property(lambda self: False))
+
+    reply = duck.call("sim.reset", {"seed": 7})
+
+    assert reply == {"accepted": False, "reason": "no ball in this scene"}

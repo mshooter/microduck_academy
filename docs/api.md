@@ -381,7 +381,7 @@ back on, so `state.policy` is `stand` again.
 
 | field | type | meaning |
 |---|---|---|
-| `seed` | integer, optional | planned, not implemented yet. Place the ball at a random spot from this seed: `x` from 0.5 to 1.5 m, `y` from -0.5 to 0.5 m, world frame. The same seed always gives the same spot. Without it, the ball goes back to its start position, 0.3 m ahead |
+| `seed` | integer, optional | Place the ball at a random spot from this seed: `x` from 0.5 to 1.5 m, `y` from -0.5 to 0.5 m, world frame. The same seed always gives the same spot. Without it, the ball goes back to its start position, 0.3 m ahead. Seed must be non-negative integer, otherwise the request is rejected as bad parameters (error -32602). A scene without a ball, a seeded reset is refused. |
 
 ```text
 → {"jsonrpc":"2.0","id":7,"method":"sim.reset","params":{"seed":42}}

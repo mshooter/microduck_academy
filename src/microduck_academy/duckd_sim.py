@@ -52,6 +52,7 @@ import io
 import logging
 import math
 import os
+import random
 import sys
 import threading
 import time
@@ -77,6 +78,9 @@ MOVE_EXPIRY = 0.5  # s of sim time without a robot.move before the velocity is z
 HEAD_FIELDS = ("neck_pitch", "head_pitch", "head_yaw", "head_roll")
 HEAD_LIMIT = 1.4  # rad, PolicyInference.head_max for the new-command policies
 BALL_RADIUS = 0.035  # m, from assets/microduck/ball.xml
+# Where a seeded sim.reset may put the ball: m, world frame, ahead of the duck (docs/api.md, sim.reset).
+BALL_X = (0.5, 1.5)
+BALL_Y = (-0.5, 0.5)
 CAMERA_ABOVE_TRUNK = (
     0.05  # m, rough camera height above the trunk origin, for robot.look
 )
@@ -108,6 +112,16 @@ def _params(params: Any, allowed: set[str]) -> Params:
 
 def _clip(v: float, limit: float) -> float:
     return max(-limit, min(limit, v))
+
+
+def ball_placement(seed: int) -> tuple[float, float]:
+    """A random but repeatable ball placement: the same seed always gives the same (x, y)."""
+    # A private generator, so nothing else drawing random numbers can move a seed's spot.
+    # Built on rng.random() alone: Python guarantees its sequence per seed across versions.
+    rng = random.Random(seed)
+    x = BALL_X[0] + (BALL_X[1] - BALL_X[0]) * rng.random()
+    y = BALL_Y[0] + (BALL_Y[1] - BALL_Y[0]) * rng.random()
+    return x, y
 
 
 class Deadman:
@@ -170,12 +184,31 @@ class DuckSim:
         self.reset()
 
     # -- simulation -----------------------------------------------------------
-    def reset(self) -> None:
+    @property
+    def has_ball(self) -> bool:
+        return self.policy.ball_qpos_adr is not None
+
+    def reset(self, seed: int | None = None) -> None:
         with self.lock:
             self._end_any_skill()
             smoke.reset_pose(self.model, self.data, self.policy)
             self.policy.head_offset[:] = 0.0
             self.deadman = Deadman()
+            if seed is not None:
+                self._place_ball(*ball_placement(seed))
+
+    def _place_ball(self, x: float, y: float) -> None:
+        """Put the ball at rest on the floor at position (x, y), world frame."""
+        with self.lock:
+            adr, vadr = self.policy.ball_qpos_adr, self.policy.ball_qvel_adr
+            self.data.qpos[adr : adr + 3] = [
+                x,
+                y,
+                BALL_RADIUS,
+            ]  # resting on the floor
+            self.data.qpos[adr + 3 : adr + 7] = [1, 0, 0, 0]
+            self.data.qvel[vadr : vadr + 6] = 0.0
+            mujoco.mj_forward(self.model, self.data)
 
     def tick(self) -> None:
         """One 50 Hz step: deadman, policy, physics."""
@@ -383,25 +416,23 @@ class DuckSim:
         }
 
     def _reset(self, params: Any) -> Params:
-        _params(params, set())
-        self.reset()
+        p = _params(params, {"seed"})
+        seed = p.get("seed")
+        if seed is not None:
+            if not isinstance(seed, int) or seed < 0 or isinstance(seed, bool):
+                raise RpcError(
+                    INVALID_PARAMS, f"seed must be a non-negative integer, got {seed!r}"
+                )
+            if not self.has_ball:
+                return {"accepted": False, "reason": "no ball in this scene"}
+        self.reset(seed)
         return {"accepted": True}
 
     def _spawn_ball(self, params: Any) -> Params:
         p = _params(params, {"x", "y"})
-        if self.policy.ball_qpos_adr is None:
+        if not self.has_ball:
             return {"accepted": False, "reason": "no ball in this scene"}
-        bx, by = float(p.get("x", 0.3)), float(p.get("y", 0.0))
-        with self.lock:
-            adr, vadr = self.policy.ball_qpos_adr, self.policy.ball_qvel_adr
-            self.data.qpos[adr : adr + 3] = [
-                bx,
-                by,
-                BALL_RADIUS,
-            ]  # resting on the floor
-            self.data.qpos[adr + 3 : adr + 7] = [1, 0, 0, 0]
-            self.data.qvel[vadr : vadr + 6] = 0.0
-            mujoco.mj_forward(self.model, self.data)
+        self._place_ball(float(p.get("x", 0.3)), float(p.get("y", 0.0)))
         return {"accepted": True}
 
     METHODS: dict[str, Callable[["DuckSim", Any], Any]] = {
